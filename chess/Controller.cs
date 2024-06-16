@@ -563,14 +563,14 @@ namespace Controller_namespace
                     bool temp_promotion = false;
 
                     Move(Selected.Pos.Item1, Selected.Pos.Item2, i, j, false, ref temp_capture, ref temp, ref temp_promotion);
-/*                    GLib.Idle.Add(() =>  //schedules the ai move to happen after the ui was updated
+                    GLib.Idle.Add(() =>  //schedules the ai move to happen after the ui was updated
                     {
                         if (player == -1)
                         {
                             aiMove();
                         }
                         return false;
-                    });*/
+                    });
                 }
                 else
                 {
