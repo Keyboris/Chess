@@ -23,8 +23,7 @@ namespace Agent_namespace
 
         public Move? GetBestMove(Board board, int player)
         {
-
-            int bestScore = player == -1 ? int.MinValue : int.MaxValue;  //the ai is maximising
+            int bestScore = player == -1 ? int.MinValue : int.MaxValue;
             Move? bestMove = null;
 
             foreach (var move in board.GetAllMoves(player))
@@ -32,15 +31,17 @@ namespace Agent_namespace
                 if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
                 {
                     var piece = board[move.from_x, move.from_y];
+                    var capturedPiece = board[move.to_x, move.to_y]; // Store the captured piece, if any
 
-                    piece.Move_to((move.to_x, move.to_y), board);
+                    piece.Move_to((move.to_x, move.to_y), board); // Make the move
 
-                    int score = Minimax(board, -player, MaxDepth, int.MinValue, int.MaxValue);
+                    int score = Minimax(board, -player, 1, int.MinValue, int.MaxValue);
 
-                    piece.Unmove(board);
-
-                    var pieceAfterUnmove = board[move.from_x, move.from_y];
-
+                    piece.Move_to((move.from_x, move.from_y), board); // Undo the move
+                    if (capturedPiece != null)
+                    {
+                        board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece
+                    }
 
                     if (player == -1 && score > bestScore)
                     {
@@ -55,59 +56,58 @@ namespace Agent_namespace
                 }
             }
 
-
             return bestMove;
         }
 
-
-
         private int Minimax(Board board, int player, int depth, int alpha, int beta)
         {
-
-
-
-            if (depth <= MaxDepth) //maxdepth
+            if (depth >= MaxDepth)
             {
                 return Evaluate(ctr, board);
             }
 
-
             int maxEval = int.MinValue;
             int minEval = int.MaxValue;
 
-            int bestScore = player == 1 ? int.MinValue : int.MaxValue;
             foreach (var move in board.GetAllMoves(player))
             {
                 if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
                 {
-                    board[move.from_x, move.from_y].Move_to((move.to_x, move.to_y), board);
-                    int score = Minimax(board, -player, depth - 1, alpha, beta);
-                    board[move.to_x, move.to_y].Unmove(board);
+                    var piece = board[move.from_x, move.from_y];
+                    var capturedPiece = board[move.to_x, move.to_y]; // Store the captured piece, if any
 
-                    if (player == -1) //maximiser
+                    piece.Move_to((move.to_x, move.to_y), board); // Make the move
+
+                    int score = Minimax(board, -player, depth + 1, alpha, beta);
+
+                    piece.Move_to((move.from_x, move.from_y), board); // Undo the move
+                    if (capturedPiece != null)
+                    {
+                        board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece
+                    }
+
+                    if (player == -1) // Maximizer
                     {
                         maxEval = int.Max(maxEval, score);
                         alpha = int.Max(alpha, maxEval);
                         if (beta <= alpha)
                         {
-                            break;
+                            break; // Beta cutoff
                         }
                     }
-                    else if (player == 1)
+                    else if (player == 1) // Minimizer
                     {
                         minEval = int.Min(minEval, score);
                         beta = int.Min(beta, minEval);
                         if (beta <= alpha)
                         {
-                            break;
+                            break; // Alpha cutoff
                         }
                     }
                 }
-
             }
 
-            bestScore = player == 1 ? minEval : maxEval;
-            return bestScore;
+            return player == 1 ? minEval : maxEval;
         }
 
 
