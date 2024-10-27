@@ -537,6 +537,10 @@ namespace Controller_namespace
         {
 
             Console.WriteLine($"({i},{j}), {board[i,j]}");
+            if (board[i,j] is Pawn pawn)
+            {
+                Console.WriteLine(pawn.FirstMove);
+            }
 
             if (!paused) 
             {

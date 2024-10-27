@@ -37,7 +37,7 @@ namespace Agent_namespace
 
                     int score = Minimax(board, -player, 1, int.MinValue, int.MaxValue);
 
-                    piece.Move_to((move.from_x, move.from_y), board); // Undo the move
+                    piece.Unmove(board); // Undo the move
                     if (capturedPiece != null)
                     {
                         board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece
@@ -80,7 +80,7 @@ namespace Agent_namespace
 
                     int score = Minimax(board, -player, depth + 1, alpha, beta);
 
-                    piece.Move_to((move.from_x, move.from_y), board); // Undo the move
+                    piece.Unmove(board); // Undo the move
                     if (capturedPiece != null)
                     {
                         board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece

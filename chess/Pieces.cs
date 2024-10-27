@@ -57,7 +57,7 @@ namespace Pieces_namespace
         private int color;
         private (int, int) position;   //x, y
         private string address;
-        private bool FirstMove = true;
+        public bool FirstMove = true;
         private string type = "Pawn";
         private Piece? lastCaptured;
         private (int, int) lastPos;
@@ -171,14 +171,11 @@ namespace Pieces_namespace
 
         public override void Unmove(Board board)
         {
-            // restore the piece to its original position
+            // Restore the piece to its original position
             Move new_pos = lastMoves.Pop();
             board[new_pos.from_x, new_pos.from_y] = this;
-            if (lastFirstMove)
-            {
-                FirstMove = true;
-            }
-            // if there was a captured piece, restore it to its original position
+
+            // If there was a captured piece, restore it to its original position
             if (lastCaptured is not null)
             {
                 board[position.Item1, position.Item2] = lastCaptured;
@@ -188,9 +185,24 @@ namespace Pieces_namespace
                 board[position.Item1, position.Item2] = null;
             }
 
+            // Check if the current piece is a Pawn and update FirstMove if applicable
+            if (board[new_pos.from_x, new_pos.from_y] is Pawn pawn)
+            {
+                if (this.color == 1 && this.position.Item2 == 6)
+                {
+                    pawn.FirstMove = true;
+                }
+                else if (this.color == -1 && this.position.Item2 == 1)
+                {
+                    pawn.FirstMove = false;
+                }
+            }
+
+            // Update the position and reset captured information
             position = (new_pos.from_x, new_pos.from_y);
             lastCaptured = null;
         }
+
 
 
         public override Piece Copy()
