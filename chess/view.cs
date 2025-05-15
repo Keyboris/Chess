@@ -72,7 +72,7 @@ namespace View_namespace
             Resizable = false;
             SetPosition(WindowPosition.Center);
 
-            
+            DeleteEvent += OnWindowDeleteEvent;
 
             Table table = new Table(8, 8, true);
             for (int row = 0; row < 8; row++)
@@ -90,6 +90,12 @@ namespace View_namespace
             overlay.Add(table);
             Add(overlay);
         }
+        
+            private void OnWindowDeleteEvent(object sender, DeleteEventArgs a)
+            {
+                Gtk.Application.Quit();
+                a.RetVal = true;
+            }
 
 
 

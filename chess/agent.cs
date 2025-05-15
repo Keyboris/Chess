@@ -8,7 +8,15 @@ using Controller_namespace;
 using GLib;
 using Pieces_namespace;
 
-namespace Agent_namespace
+//TODO: scrap the move/unmove system, it makes things slow and confusing. implement board copying DONE 
+//implement at leeast 2 threads, let one handle the ui so that you could move the window while the move is being calculated,
+//let the other one handle the move calculation
+//implement castling ffs
+//maybe try to thinka about multithreadiing for calculating the moves? maybe left - right? no idea
+
+
+
+namespace Agent_namespace  //black should be -1 and should be minimizing
 {
     public class Agent
     {
@@ -23,32 +31,33 @@ namespace Agent_namespace
 
         public Move? GetBestMove(Board board, int player)
         {
-            int bestScore = player == -1 ? int.MinValue : int.MaxValue;
+            int bestScore = player == -1 ? int.MaxValue : int.MinValue;
             Move? bestMove = null;
+
+
 
             foreach (var move in board.GetAllMoves(player))
             {
-                if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
+
+                Board boardCopy = board.Copy();
+
+                if (ctr.Allowed_Move(boardCopy, move.from_x, move.from_y, move.to_x, move.to_y))
                 {
-                    var piece = board[move.from_x, move.from_y];
-                    var capturedPiece = board[move.to_x, move.to_y]; // Store the captured piece, if any
+                    Piece piece = boardCopy[move.from_x, move.from_y]!;
+                    // var capturedPiece = board[move.to_x, move.to_y]; // not needed, the original board is not modified
 
-                    piece.Move_to((move.to_x, move.to_y), board); // Make the move
 
-                    int score = Minimax(board, -player, 1, int.MinValue, int.MaxValue);
+                    piece.Move_to((move.to_x, move.to_y), boardCopy); // Make the move
 
-                    piece.Unmove(board); // Undo the move
-                    if (capturedPiece != null)
-                    {
-                        board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece
-                    }
+                    int score = Minimax(boardCopy, -player, 1, int.MinValue, int.MaxValue);
 
-                    if (player == -1 && score > bestScore)
-                    {
-                        bestScore = score;
-                        bestMove = move;
-                    }
-                    else if (player == 1 && score < bestScore)
+                    //piece.Unmove(board); //scrap that
+                    // if (capturedPiece != null)
+                    // {
+                    //     board[move.to_x, move.to_y] = capturedPiece; // again, not needed since we are not modifying the original board
+                    // }
+
+                    if ((player == -1 && score < bestScore) || (player == 1 && score > bestScore))
                     {
                         bestScore = score;
                         bestMove = move;
@@ -61,53 +70,64 @@ namespace Agent_namespace
 
         private int Minimax(Board board, int player, int depth, int alpha, int beta)
         {
+            Console.WriteLine($"Depth: {depth}, Player: {player}");
             if (depth >= MaxDepth)
             {
                 return Evaluate(ctr, board);
             }
 
-            int maxEval = int.MinValue;
-            int minEval = int.MaxValue;
-
-            foreach (var move in board.GetAllMoves(player))
+            if (player == 1) // White, maximizing player
             {
-                if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
+                int maxEval = int.MinValue;
+                
+                foreach (var move in board.GetAllMoves(player))
                 {
-                    var piece = board[move.from_x, move.from_y];
-                    var capturedPiece = board[move.to_x, move.to_y]; // Store the captured piece, if any
+                    Board boardCopy = board.Copy();
 
-                    piece.Move_to((move.to_x, move.to_y), board); // Make the move
-
-                    int score = Minimax(board, -player, depth + 1, alpha, beta);
-
-                    piece.Unmove(board); // Undo the move
-                    if (capturedPiece != null)
+                    if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
                     {
-                        board[move.to_x, move.to_y] = capturedPiece; // Restore the captured piece
-                    }
+                        var piece = boardCopy[move.from_x, move.from_y];
+                        piece.Move_to((move.to_x, move.to_y), boardCopy);
 
-                    if (player == -1) // Maximizer
-                    {
-                        maxEval = int.Max(maxEval, score);
-                        alpha = int.Max(alpha, maxEval);
+                        int score = Minimax(boardCopy, -player, depth + 1, alpha, beta);
+                        maxEval = Math.Max(maxEval, score);
+                        alpha = Math.Max(alpha, maxEval);
+                        
                         if (beta <= alpha)
                         {
                             break; // Beta cutoff
                         }
                     }
-                    else if (player == 1) // Minimizer
+                }
+                
+                return maxEval;
+            }
+            else // Black, minimizing player
+            {
+                int minEval = int.MaxValue;
+                
+                foreach (var move in board.GetAllMoves(player))
+                {
+                    Board boardCopy = board.Copy();
+
+                    if (ctr.Allowed_Move(board, move.from_x, move.from_y, move.to_x, move.to_y))
                     {
-                        minEval = int.Min(minEval, score);
-                        beta = int.Min(beta, minEval);
+                        var piece = boardCopy[move.from_x, move.from_y];
+                        piece.Move_to((move.to_x, move.to_y), boardCopy);
+
+                        int score = Minimax(boardCopy, -player, depth + 1, alpha, beta);
+                        minEval = Math.Min(minEval, score);
+                        beta = Math.Min(beta, minEval);
+                        
                         if (beta <= alpha)
                         {
                             break; // Alpha cutoff
                         }
                     }
                 }
+                
+                return minEval;
             }
-
-            return player == 1 ? minEval : maxEval;
         }
 
 
@@ -266,12 +286,12 @@ namespace Agent_namespace
             {
                 return p.Type switch
                 {
-                    "Pawn" => -WhitePawnTable[p.Pos.Item2, p.Pos.Item1],
-                    "Knght" => -WhiteKnightTable[p.Pos.Item2, p.Pos.Item1],
-                    "Bishop" => -WhiteBishopTable[p.Pos.Item2, p.Pos.Item1],
-                    "Rook" => -WhiteRookTable[p.Pos.Item2, p.Pos.Item1],
-                    "Queen" => -WhiteQueenTable[p.Pos.Item2, p.Pos.Item1],
-                    "King" => -WhiteKingTable[p.Pos.Item2, p.Pos.Item1],
+                    "Pawn" => WhitePawnTable[p.Pos.Item2, p.Pos.Item1],
+                    "Knight" => WhiteKnightTable[p.Pos.Item2, p.Pos.Item1],
+                    "Bishop" => WhiteBishopTable[p.Pos.Item2, p.Pos.Item1],
+                    "Rook" => WhiteRookTable[p.Pos.Item2, p.Pos.Item1],
+                    "Queen" => WhiteQueenTable[p.Pos.Item2, p.Pos.Item1],
+                    "King" => WhiteKingTable[p.Pos.Item2, p.Pos.Item1],
                     _ => 0
                 };
             }
@@ -280,7 +300,7 @@ namespace Agent_namespace
                 return p.Type switch
                 {
                     "Pawn" => BlackPawnTable[p.Pos.Item2, p.Pos.Item1],
-                    "Knght" => BlackKnightTable[p.Pos.Item2, p.Pos.Item1],
+                    "Knight" => BlackKnightTable[p.Pos.Item2, p.Pos.Item1],
                     "Bishop" => BlackBishopTable[p.Pos.Item2, p.Pos.Item1],
                     "Rook" => BlackRookTable[p.Pos.Item2, p.Pos.Item1],
                     "Queen" => BlackQueenTable[p.Pos.Item2, p.Pos.Item1],
@@ -311,12 +331,12 @@ namespace Agent_namespace
                         {
                             if (k != j && board[i, k] is Pawn otherPawn && otherPawn.Color == pawn.Color) //if we have 2 pawns on the same rank
                             {
-                                score -= -(20 * pawn.Color); //the minus is needed since the ai is -1 and is maximising
+                                score -= 20 * pawn.Color; //the minus is needed since the ai is -1 and is maximising
                             }
                         }
 
                         bool isolated = true;
-                        if (isValid(i-1) && isValid(j-1) && isValid(j+1) && isValid(i+1))
+                        if (isValid(i - 1) && isValid(j - 1) && isValid(j + 1) && isValid(i + 1))
                         {
                             if (i > 0 && (board[i - 1, j - 1] is Pawn || board[i - 1, j + 1] is Pawn))
                             {
@@ -329,12 +349,12 @@ namespace Agent_namespace
                         }
                         if (isolated)
                         {
-                            score -= -(10 * pawn.Color);
+                            score -= 10 * pawn.Color;
                         }
 
                         if (j > 0 && board[i, j - 1] is Pawn chainPawn && chainPawn.Color == pawn.Color)
                         {
-                            score += -(10 * pawn.Color);
+                            score += 10 * pawn.Color;
                         }
                     }
                 }
@@ -348,7 +368,7 @@ namespace Agent_namespace
             int score = 0;
             for (int new_y = 0; new_y < 8; new_y++)
             {
-                if ((board[x, new_y] is null && y != new_y))
+                if (board[x, new_y] is null && y != new_y)
                 {
                     score += 1;
                 }
@@ -376,7 +396,7 @@ namespace Agent_namespace
                     if (board[j, i] is not null)
                     {
                         score += PositionValue(board[j, i]);
-                        score += -(board[j, i].Color * values[board[j, i].Type]); // we need the minus, since the ai is maximising
+                        score += (board[j, i].Color * values[board[j, i].Type]); // we need the minus, since the ai is maximising flipped
                         if (board[j, i] is Rook)
                         {
                             score += OpenLane(board, j, i);

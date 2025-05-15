@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "BEd9zEUQuqZR8XeGDe9v75pkvVUeET2ARmEeWE5gdy+UCIOcUBocbTkkrCpd4ZCaniUbAOekTW5kZajY/s0A4A==",
+  "dgSpecHash": "wRTIBpc+ymA=",
   "success": true,
-  "projectFilePath": "C:\\Users\\iluya\\Documents\\GitHub\\Chess\\chess\\chess.csproj",
+  "projectFilePath": "C:\\Users\\iluya\\Desktop\\Chess\\chess\\chess.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\iluya\\.nuget\\packages\\atksharp\\3.24.24.95\\atksharp.3.24.24.95.nupkg.sha512",
     "C:\\Users\\iluya\\.nuget\\packages\\cairosharp\\3.24.24.95\\cairosharp.3.24.24.95.nupkg.sha512",
@@ -10,7 +10,11 @@
     "C:\\Users\\iluya\\.nuget\\packages\\giosharp\\3.24.24.95\\giosharp.3.24.24.95.nupkg.sha512",
     "C:\\Users\\iluya\\.nuget\\packages\\glibsharp\\3.24.24.95\\glibsharp.3.24.24.95.nupkg.sha512",
     "C:\\Users\\iluya\\.nuget\\packages\\gtksharp\\3.24.24.95\\gtksharp.3.24.24.95.nupkg.sha512",
-    "C:\\Users\\iluya\\.nuget\\packages\\pangosharp\\3.24.24.95\\pangosharp.3.24.24.95.nupkg.sha512"
+    "C:\\Users\\iluya\\.nuget\\packages\\pangosharp\\3.24.24.95\\pangosharp.3.24.24.95.nupkg.sha512",
+    "C:\\Users\\iluya\\.nuget\\packages\\microsoft.netcore.app.ref\\7.0.20\\microsoft.netcore.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\iluya\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\7.0.20\\microsoft.windowsdesktop.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\iluya\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\7.0.20\\microsoft.aspnetcore.app.ref.7.0.20.nupkg.sha512",
+    "C:\\Users\\iluya\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\7.0.20\\microsoft.netcore.app.host.win-x64.7.0.20.nupkg.sha512"
   ],
   "logs": []
 }

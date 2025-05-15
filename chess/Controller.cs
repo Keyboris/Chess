@@ -35,11 +35,6 @@ namespace Controller_namespace
     {
         private Piece?[,] board = new Piece?[8, 8]; //this holds the internal state of the game
 
-        public Board()
-        {
-
-        }
-
         public Piece? this[int i, int j] 
         {
             set
@@ -53,7 +48,7 @@ namespace Controller_namespace
             }
         }
 
-        public Board Copy()
+        public Board Copy() //this is fine ig
         {
             Board copy = new Board();
 
@@ -611,9 +606,12 @@ namespace Controller_namespace
             Move(last_move.Item1.Item1, last_move.Item1.Item2, last_move.Item2.Item1, last_move.Item2.Item2, true, ref temp_capture, ref temp, ref temp_promotion);
         }
 
-        private void aiMove()
+        private async Task aiMove()
         {
-            Move bestMove = agent.GetBestMove(board, -1);
+
+            Move bestMove = await Task.Run(() => agent.GetBestMove(board, -1));
+
+
             if (bestMove is null)
             {
                 winner = 1;

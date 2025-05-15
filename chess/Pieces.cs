@@ -23,7 +23,7 @@ namespace Pieces_namespace
 
         public abstract string Address { get; }
 
-        public abstract (int, int) Pos { get; }
+        public abstract (int, int) Pos { get; set; }
 
         public abstract int Color { get; }
 
@@ -216,7 +216,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
@@ -318,7 +322,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
@@ -427,7 +435,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
@@ -535,7 +547,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
@@ -648,7 +664,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
@@ -793,7 +813,11 @@ namespace Pieces_namespace
 
         public override string Address => address;
 
-        public override (int, int) Pos => position;
+        public override (int, int) Pos
+        {
+            get => position;
+            set => position = value;
+        }
 
         public override int Color => color;
 
