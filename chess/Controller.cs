@@ -172,7 +172,6 @@ namespace Controller_namespace
                                 return true;
                             }
                         }
-                        // *** THE FIX IS HERE ***
                         else if (p is King king)
                         {
                             // Call the new, non-recursive method for kings to break the loop
@@ -446,4 +445,5 @@ namespace Controller_namespace
             for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null) cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
         }
     }
+
 }
