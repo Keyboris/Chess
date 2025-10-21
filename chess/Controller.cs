@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System;
+using System.Diagnostics.Tracing;
 
 namespace Controller_namespace
 {
@@ -297,13 +298,14 @@ namespace Controller_namespace
 
         private void UpdateUI(Move move)
         {
-            // Clear 'from' square
             cells[move.from_x, move.from_y].Image.Pixbuf = null;
-            
-            // Clear 'to' square of any existing piece image
+
+
             foreach (var child in cells[move.to_x, move.to_y].Children) cells[move.to_x, move.to_y].Remove(child);
+
+
+
             
-            // Draw piece on 'to' square
             Piece pieceOnToSquare = board[move.to_x, move.to_y];
             if (pieceOnToSquare != null)
             {
@@ -317,14 +319,24 @@ namespace Controller_namespace
             // Handle castling UI for rook
             if (move.isCastling)
             {
-                 int rook_from_x = move.to_x > move.from_x ? 7 : 0;
-                 int rook_to_x = move.to_x > move.from_x ? 5 : 3;
-                 cells[rook_from_x, move.from_y].Image.Pixbuf = null;
-                 Piece rook = board[rook_to_x, move.from_y];
-                 Gdk.Pixbuf rookPixbuf = new Gdk.Pixbuf(rook.Address).ScaleSimple(90, 90, Gdk.InterpType.Bilinear);
-                 cells[rook_to_x, move.from_y].Image = new Image(rookPixbuf);
-                 cells[rook_to_x, move.from_y].Add(cells[rook_to_x, move.from_y].Image);
-                 cells[rook_to_x, move.from_y].Image.Show();
+                int rook_from_x = move.to_x > move.from_x ? 7 : 0;
+                int rook_to_x = move.to_x > move.from_x ? 5 : 3;
+                if (cells[rook_from_x, move.from_y].Image != null)
+                {
+                    cells[rook_from_x, move.from_y].Remove(cells[rook_from_x, move.from_y].Image);
+                    cells[rook_from_x, move.from_y].Image = null;
+                }
+                if (cells[rook_to_x, move.from_y].Image != null)
+                {
+                    cells[rook_to_x, move.from_y].Remove(cells[rook_to_x, move.from_y].Image);
+                    cells[rook_to_x, move.from_y].Image = null;
+                }
+                Piece rook = board[rook_to_x, move.from_y];
+                Gdk.Pixbuf rookPixbuf = new Gdk.Pixbuf(rook.Address).ScaleSimple(90, 90, Gdk.InterpType.Bilinear);
+                Image rookImage = new Image(rookPixbuf);
+                cells[rook_to_x, move.from_y].Add(rookImage);
+                cells[rook_to_x, move.from_y].Image = rookImage;
+                cells[rook_to_x, move.from_y].Image.Show();
             }
         }
         
@@ -374,7 +386,7 @@ namespace Controller_namespace
                 
                 if (actualMove != null) {
                     ExecuteMove(actualMove);
-                    if (!ended && player == -1) // If it's now AI's turn
+                    if (!ended && player == -1)
                     {
                         GLib.Idle.Add(() => { aiMove(); return false; });
                     }
@@ -404,7 +416,7 @@ namespace Controller_namespace
             
             // Now execute the full move
             ExecuteMove(last_move_for_promotion);
-             if (!ended && player == -1) // If it's now AI's turn
+             if (!ended && player == -1)
             {
                 GLib.Idle.Add(() => { aiMove(); return false; });
             }
