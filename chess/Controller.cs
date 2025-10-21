@@ -1,84 +1,191 @@
 ﻿using Gtk;
-using Pango;
 using Pieces_namespace;
 using Agent_namespace;
-using System.Text;
-using Controller_namespace;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using System;
-using System.Transactions;
-using System.Diagnostics;
-
-
-
 
 namespace Controller_namespace
 {
-
-
     public class Move
     {
-        public int from_x;
-        public int from_y;
-        public int to_x;
-        public int to_y;
+        public int from_x, from_y, to_x, to_y;
+        public Piece capturedPiece;
+        public bool wasPawnFirstMove;
+        public bool isPromotion;
+        public bool isCastling;
+        // Add fields for castling rights, en passant, etc., if needed for unmaking
+        public (bool, bool) oldWhiteCastleRights;
+        public (bool, bool) oldBlackCastleRights;
 
         public Move(int from_x, int from_y, int to_x, int to_y)
         {
-            this.from_x = from_x;
-            this.from_y = from_y;
-            this.to_x = to_x;
-            this.to_y = to_y;
+            this.from_x = from_x; this.from_y = from_y; this.to_x = to_x; this.to_y = to_y;
+            this.capturedPiece = null; this.wasPawnFirstMove = false; this.isPromotion = false; this.isCastling = false;
         }
     }
 
     public class Board
     {
-        private Piece?[,] board = new Piece?[8, 8]; //this holds the internal state of the game
+        private Piece?[,] board = new Piece?[8, 8];
+        private bool canWhiteCastleKingside = true, canWhiteCastleQueenside = true;
+        private bool canBlackCastleKingside = true, canBlackCastleQueenside = true;
 
-        public Piece? this[int i, int j] 
+        public Piece? this[int i, int j]
         {
-            set
-            {
-                board[i, j] = value;
-            }
-
-            get
-            {
-                return board[i, j];
-            }
+            set => board[i, j] = value;
+            get => board[i, j];
         }
 
-        public Board Copy() //this is fine ig
+        public Board Copy()
         {
             Board copy = new Board();
-
-            for (int i = 0; i < 8; i++)
-            {
-                for (int j = 0; j < 8; j++)
-                {
-                    if (board[i, j] != null)
-                    {
-                        copy[i, j] = board[i, j].Copy();
-                    }
-                }
-            }
+            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null) copy[i, j] = board[i, j].Copy();
+            copy.canWhiteCastleKingside = this.canWhiteCastleKingside;
+            copy.canWhiteCastleQueenside = this.canWhiteCastleQueenside;
+            copy.canBlackCastleKingside = this.canBlackCastleKingside;
+            copy.canBlackCastleQueenside = this.canBlackCastleQueenside;
             return copy;
         }
+        
+        public bool CanCastle(int color, bool isKingside)
+        {
+            if (color == 1) return isKingside ? canWhiteCastleKingside : canWhiteCastleQueenside;
+            return isKingside ? canBlackCastleKingside : canBlackCastleQueenside;
+        }
 
+        public void MakeMove(Move move)
+        {
+            Piece movingPiece = this[move.from_x, move.from_y];
+            move.capturedPiece = this[move.to_x, move.to_y];
+            
+            // Store old castling rights for unmove
+            move.oldWhiteCastleRights = (canWhiteCastleKingside, canWhiteCastleQueenside);
+            move.oldBlackCastleRights = (canBlackCastleKingside, canBlackCastleQueenside);
 
-        public bool CheckStalemate(int color)
+            if (movingPiece is Pawn pawn)
+            {
+                move.wasPawnFirstMove = pawn.FirstMove;
+                // Check for promotion
+                if ((pawn.Color == 1 && move.to_y == 0) || (pawn.Color == -1 && move.to_y == 7))
+                {
+                    move.isPromotion = true;
+                    this[move.from_x, move.from_y] = new Queen(pawn.Color, pawn.Pos); // Default to Queen for AI
+                }
+            } else if (movingPiece is King king)
+            {
+                king.hasMoved = true;
+                if (king.Color == 1) { canWhiteCastleKingside = canWhiteCastleQueenside = false; }
+                else { canBlackCastleKingside = canBlackCastleQueenside = false; }
+            } else if (movingPiece is Rook rook)
+            {
+                if (rook.Color == 1)
+                {
+                    if (rook.Pos == (0, 7)) canWhiteCastleQueenside = false;
+                    else if (rook.Pos == (7, 7)) canWhiteCastleKingside = false;
+                } else
+                {
+                    if (rook.Pos == (0, 0)) canBlackCastleQueenside = false;
+                    else if (rook.Pos == (7, 0)) canBlackCastleKingside = false;
+                }
+            }
+
+            // Handle castling
+            if (move.isCastling)
+            {
+                movingPiece.Move_to((move.to_x, move.to_y), this);
+                int rook_from_x = move.to_x > move.from_x ? 7 : 0;
+                int rook_to_x = move.to_x > move.from_x ? 5 : 3;
+                Piece rook = this[rook_from_x, move.from_y];
+                rook.Move_to((rook_to_x, move.from_y), this);
+            }
+            else
+            {
+                 movingPiece.Move_to((move.to_x, move.to_y), this);
+            }
+        }
+
+        public void UnmakeMove(Move move)
+        {
+            Piece movingPiece = this[move.to_x, move.to_y];
+
+            // Restore castling rights
+            (canWhiteCastleKingside, canWhiteCastleQueenside) = move.oldWhiteCastleRights;
+            (canBlackCastleKingside, canBlackCastleQueenside) = move.oldBlackCastleRights;
+            
+            // Handle castling undo
+            if (move.isCastling)
+            {
+                // Move king back
+                this[move.from_x, move.from_y] = movingPiece;
+                this[move.to_x, move.to_y] = null;
+                movingPiece.Pos = (move.from_x, move.from_y);
+
+                // Move rook back
+                int rook_from_x = move.to_x > move.from_x ? 7 : 0;
+                int rook_to_x = move.to_x > move.from_x ? 5 : 3;
+                Piece rook = this[rook_to_x, move.from_y];
+                this[rook_from_x, move.from_y] = rook;
+                this[rook_to_x, move.from_y] = null;
+                rook.Pos = (rook_from_x, move.from_y);
+            }
+            else
+            {
+                 // Handle standard unmove
+                if (move.isPromotion)
+                {
+                    movingPiece = new Pawn(movingPiece.Color, movingPiece.Pos);
+                }
+                
+                this[move.from_x, move.from_y] = movingPiece;
+                this[move.to_x, move.to_y] = move.capturedPiece;
+                movingPiece.Pos = (move.from_x, move.from_y);
+            }
+
+            if (movingPiece is Pawn pawn) pawn.FirstMove = move.wasPawnFirstMove;
+            if (movingPiece is King king) king.hasMoved = !((king.Color == 1 && king.Pos == (4,7)) || (king.Color == -1 && king.Pos == (4,0)));
+        }
+
+        public (int, int) FindKing(int color)
+        {
+            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] is King k && k.Color == color) return (i, j);
+            return (-1, -1); // Should not happen
+        }
+
+        public bool IsSquareAttacked((int, int) square, int attackerColor)
         {
             for (int i = 0; i < 8; i++)
             {
                 for (int j = 0; j < 8; j++)
                 {
-                    if (board[i, j] is not null)
+                    Piece p = board[i, j];
+                    if (p != null && p.Color == attackerColor)
                     {
-                        if (board[i,j].Color != color)
+                        // For pawns, we check their capture moves specifically
+                        if (p is Pawn pawn)
                         {
-                            if (board[i,j].Show_Possible_Moves(this).Length > 0)
+                            int y_dir = -pawn.Color;
+                            if (square.Item2 == p.Pos.Item2 + y_dir && (square.Item1 == p.Pos.Item1 + 1 || square.Item1 == p.Pos.Item1 - 1))
                             {
-                                return false;
+                                return true;
+                            }
+                        }
+                        // *** THE FIX IS HERE ***
+                        else if (p is King king)
+                        {
+                            // Call the new, non-recursive method for kings to break the loop
+                            foreach (var move in king.GetStandardMoves())
+                            {
+                                if (move.to_x == square.Item1 && move.to_y == square.Item2) return true;
+                            }
+                        }
+                        else
+                        {
+                            // This is fine for all other pieces
+                            foreach (var move in p.Show_Possible_Moves(this))
+                            {
+                                if (move.to_x == square.Item1 && move.to_y == square.Item2) return true;
                             }
                         }
                     }
@@ -87,572 +194,244 @@ namespace Controller_namespace
             return false;
         }
 
-        public Move[] GetAllMoves(int color)
+        public List<Move> GenerateLegalMoves(int color)
         {
-            Console.WriteLine("We have started calculating the moves");
-            List<Move> moves = new List<Move>();
-
+            List<Move> legalMoves = new List<Move>();
             for (int i = 0; i < 8; i++)
             {
                 for (int j = 0; j < 8; j++)
                 {
-                    if (board[j, i] != null)
+                    if (board[i, j] != null && board[i, j].Color == color)
                     {
-                        if (board[j, i].Color == color)
+                        List<Move> pseudoLegalMoves = board[i, j].Show_Possible_Moves(this);
+                        foreach (var move in pseudoLegalMoves)
                         {
-                            foreach (var move in board[j, i].Show_Possible_Moves(this))
+                            MakeMove(move);
+                            var kingPos = FindKing(color);
+                            if (!IsSquareAttacked(kingPos, -color))
                             {
-                                moves.Add(new Move(j, i, move.Item1, move.Item2));
+                                legalMoves.Add(move);
                             }
+                            UnmakeMove(move);
                         }
                     }
                 }
             }
-
-            Console.WriteLine("we have finished calculating the moves");
-            return moves.ToArray();
+            return legalMoves;
         }
     }
-
-
 
     public class Controller
     {
         public Board board = new Board();
-        public View_namespace.Cell[,] cells = new View_namespace.Cell[8, 8];   //Cells is an array of custon widgets which are added to the table widget, the definition of a Cell can be found in View.cs
+        public View_namespace.Cell[,] cells = new View_namespace.Cell[8, 8];
         public List<(int, int)> ModifiedBgs = new List<(int, int)>();
         public Piece Selected;
         public int player = 1;
         private int winner = 0;
         private bool paused = false;
         public bool ended = false;
-        private ((int, int), (int, int)) last_move = ((-1, -1), (-1, -1));   //ugly
-        private int Check = 0; //1 for white in check, -1 for black in check
+        private Move last_move_for_promotion;
         private Agent agent = new Agent();
-        public (int, int) White_King; //important pieces, i dont want to look for them every turn
-        public (int, int) Black_King;
 
         public Controller(Agent agent)
         {
-
             this.agent = agent;
-
-            for (int i = 0; i < 8; i++)
-            {
-                for (int j = 0; j < 8; j++) 
-                {
-                    if (j == 1)
-                    {
-                        board[i, j] = new Pawn(-1, (i, j));
-                    }
-                    else if (j == 6)
-                    {
-                        board[i, j] = new Pawn(1, (i, j));
-                    }
-                    else if (j == 7 && i == 6)
-                    {
-                        board[i, j] = new Knight(1, (i, j));
-                    }
-                    else if (j == 7 && i == 1)
-                    {
-                        board[i, j] = new Knight(1, (i, j)); 
-                    }
-                    else if (j == 0 && i == 1)
-                    {
-                        board[i, j] = new Knight(-1, (i, j));
-                    }
-                    else if (j == 0 && i == 6)
-                    {
-                        board[i, j] = new Knight(-1, (i, j));
-                    }
-                    else if (j == 0 && (i == 5 || i == 2))
-                    {
-                        board[i, j] = new Bishop(-1, (i, j));
-                    }
-                    else if (j == 7 && (i == 5 || i == 2))
-                    {
-                        board[i, j] = new Bishop(1, (i, j));
-                    }
-                    else if (j == 0 && (i == 0 || i == 7))
-                    {
-                       board[i, j] = new Rook(-1, (i, j));
-                    }
-                    else if (j == 7 && (i == 0 || i == 7))
-                    {
-                        board[i, j] = new Rook(1, (i, j));
-                    }
-                    else if (j == 0 && i == 3)
-                    {
-                        board[i, j] = new Queen(-1, (i, j));
-                    }
-                    else if (j == 7 && i == 3)
-                    {
-                        board[i, j] = new Queen(1, (i, j));
-                    }
-                    else if (j == 0 && i == 4)
-                    {
-                        board[i, j] = new King(-1, (i, j));
-                        Black_King = (i, j);
-                    }
-                    else if (j == 7 && i == 4)
-                    {
-                        board[i, j] = new King(1, (i, j));
-                        White_King = (i, j);
-                    }
-                    else
-                    {
-                        board[i, j] = null;
-                    }
-                }
-            }
+            InitializeBoard();
         }
 
-
-
-
+        private void InitializeBoard()
+        {
+            // Pawns
+            for (int i = 0; i < 8; i++) { board[i, 1] = new Pawn(-1, (i, 1)); board[i, 6] = new Pawn(1, (i, 6)); }
+            // Rooks
+            board[0, 0] = new Rook(-1, (0, 0)); board[7, 0] = new Rook(-1, (7, 0)); board[0, 7] = new Rook(1, (0, 7)); board[7, 7] = new Rook(1, (7, 7));
+            // Knights
+            board[1, 0] = new Knight(-1, (1, 0)); board[6, 0] = new Knight(-1, (6, 0)); board[1, 7] = new Knight(1, (1, 7)); board[6, 7] = new Knight(1, (6, 7));
+            // Bishops
+            board[2, 0] = new Bishop(-1, (2, 0)); board[5, 0] = new Bishop(-1, (5, 0)); board[2, 7] = new Bishop(1, (2, 7)); board[5, 7] = new Bishop(1, (5, 7));
+            // Queens
+            board[3, 0] = new Queen(-1, (3, 0)); board[3, 7] = new Queen(1, (3, 7));
+            // Kings
+            board[4, 0] = new King(-1, (4, 0)); board[4, 7] = new King(1, (4, 7));
+        }
 
         public void RestoreBackgrounds()
         {
-            foreach ((int, int) coord in ModifiedBgs)
-            {
-                cells[coord.Item1, coord.Item2].ModifyBg(StateType.Normal, cells[coord.Item1, coord.Item2].BgColor);
-            }
+            foreach ((int, int) coord in ModifiedBgs) cells[coord.Item1, coord.Item2].ModifyBg(StateType.Normal, cells[coord.Item1, coord.Item2].BgColor);
             ModifiedBgs.Clear();
         }
 
-        public void DisplayMoves(int i, int j)
+        public void DisplayMoves(List<Move> moves)
         {
-            Gdk.Color newBackgroundColor = new Gdk.Color(33, 36, 148);
+            Gdk.Color moveColor = new Gdk.Color(33, 36, 148);
+            foreach (var move in moves)
+            {
+                ModifiedBgs.Add((move.to_x, move.to_y));
+                cells[move.to_x, move.to_y].ModifyBg(StateType.Normal, moveColor);
+            }
+        }
+        
+        public void ExecuteMove(Move move)
+        {
+            if (winner != 0 || ended) return;
+            
+            // --- Promotion Logic ---
+            Piece movingPiece = board[move.from_x, move.from_y];
+            if (movingPiece is Pawn && (move.to_y == 0 || move.to_y == 7))
+            {
+                if (player == 1) // Human player promotes
+                {
+                    paused = true;
+                    last_move_for_promotion = move;
+                    View_namespace.Program.Show_Choices(movingPiece.Color);
+                    return; // Wait for player choice
+                }
+                // AI promotes to Queen by default in MakeMove
+            }
 
-            cells[i, j].ModifyBg(StateType.Normal, newBackgroundColor);   //set a default color of each cell, keep a set of changed backgrounds, when the new click is detected
+            board.MakeMove(move);
+            UpdateUI(move);
+            CheckEndGame();
         }
 
-        public void Move(int from_x, int from_y, int to_i, int to_j, bool priority, ref bool capture, ref Piece capturedPiece, ref bool promotion)
+        private void UpdateUI(Move move)
         {
-            if (winner != 0)
+            // Clear 'from' square
+            cells[move.from_x, move.from_y].Image.Pixbuf = null;
+            
+            // Clear 'to' square of any existing piece image
+            foreach (var child in cells[move.to_x, move.to_y].Children) cells[move.to_x, move.to_y].Remove(child);
+            
+            // Draw piece on 'to' square
+            Piece pieceOnToSquare = board[move.to_x, move.to_y];
+            if (pieceOnToSquare != null)
             {
-                return;
-            }
-
-
-
-            if ((Allowed_Move(board, from_x, from_y, to_i, to_j) || priority) && !paused)
-            {
-
-                
-
-                if (board[from_x, from_y] is Pawn)
-                {
-                    if (board[from_x, from_y].Color == 1 && to_j == 0) //if it is a white pawn about to promote
-                    {
-                        View_namespace.Program.Show_Choices(board[from_x, from_y].Color);
-                        promotion = true;
-                        paused = true;
-                        return;
-                    }
-                    else if (board[from_x, from_y].Color == -1 && to_j == 7)
-                    {
-                        board[from_x, from_y] = new Queen(player, (from_x, from_y));
-                    }
-                    else
-                    {
-                        promotion = false;
-                    }
-                }
-
-                last_move = ((from_x, from_y), (to_i, to_j));
-
-                foreach (var child in cells[to_i, to_j].Children)
-                {
-                    cells[to_i, to_j].Remove(child);
-                }
-
-
-
-                Piece p = board[from_x, from_y];
-
-
-                cells[from_x, from_y].Image.Pixbuf = null;
-                cells[from_x, from_y].Image = null;
-
-                
-                if (board[to_i, to_j] is not null)
-                {
-                    capturedPiece = board[to_i, to_j].Copy();
-                    capture = true;
-                }
-                else
-                {
-                    capturedPiece = null;
-                    capture = false;
-                }
-
-                board[from_x, from_y].Move_to((to_i, to_j), board);
-
-
-                if ((from_x, from_y) == Black_King)
-                {
-                    Black_King = (to_i, to_j);
-                }
-                else if ((from_x, from_y) == White_King)
-                {
-                    White_King = (to_i, to_j);
-                }
-
-                Image image = new Image();
-                image.SetSizeRequest(30, 30);
-
-                if (board[to_i, to_j] is null)
-                {
-                    throw new Exception("the piece where to move is null");
-                }
-                else if (board[to_i, to_j].Address is null)
-                {
-                    throw new Exception("the address is null somehow?");
-                }
-                Gdk.Pixbuf originalPixbuf = new Gdk.Pixbuf(board[to_i, to_j].Address);
+                Gdk.Pixbuf originalPixbuf = new Gdk.Pixbuf(pieceOnToSquare.Address);
                 var scaledPixbuf = originalPixbuf.ScaleSimple(90, 90, Gdk.InterpType.Bilinear);
-
-                image.Pixbuf = scaledPixbuf;
-
-                cells[to_i, to_j].Image = image;
-                cells[to_i, to_j].Image.Pixbuf = image.Pixbuf;
-
-                cells[to_i, to_j].Add(cells[to_i, to_j].Image);
-                cells[to_i, to_j].Image.Show();
-
-
-
-                player = -player;
-
-
+                cells[move.to_x, move.to_y].Image = new Image(scaledPixbuf);
+                cells[move.to_x, move.to_y].Add(cells[move.to_x, move.to_y].Image);
+                cells[move.to_x, move.to_y].Image.Show();
             }
 
-
-            if (checkCheck(board, ref Check))
+            // Handle castling UI for rook
+            if (move.isCastling)
             {
-                Console.WriteLine($"Check detected! Current check state: {Check}");
-
-                if (mateCheck(board, player, ref winner))
+                 int rook_from_x = move.to_x > move.from_x ? 7 : 0;
+                 int rook_to_x = move.to_x > move.from_x ? 5 : 3;
+                 cells[rook_from_x, move.from_y].Image.Pixbuf = null;
+                 Piece rook = board[rook_to_x, move.from_y];
+                 Gdk.Pixbuf rookPixbuf = new Gdk.Pixbuf(rook.Address).ScaleSimple(90, 90, Gdk.InterpType.Bilinear);
+                 cells[rook_to_x, move.from_y].Image = new Image(rookPixbuf);
+                 cells[rook_to_x, move.from_y].Add(cells[rook_to_x, move.from_y].Image);
+                 cells[rook_to_x, move.from_y].Image.Show();
+            }
+        }
+        
+        private void CheckEndGame()
+        {
+            player = -player; // Switch player
+            var legalMoves = board.GenerateLegalMoves(player);
+            
+            if (legalMoves.Count == 0)
+            {
+                ended = true;
+                var kingPos = board.FindKing(player);
+                if (board.IsSquareAttacked(kingPos, -player))
                 {
-                    Console.WriteLine($"Checkmate detected! Winner: {winner}");
+                    winner = -player; // Checkmate
+                    Console.WriteLine($"Checkmate! Winner: {winner}");
                     WinAnimation(winner);
                 }
-                else if (board.CheckStalemate(player))
+                else
                 {
-                    Console.WriteLine("Stalemate detected!");
-                    winner = 0;
+                    winner = 0; // Stalemate
+                    Console.WriteLine("Stalemate!");
                     DrawAnimation();
                 }
-
-
             }
         }
-
-
-        public bool checkCheck(Board board, ref int check)
-        {
-            bool isCheck = false;
-
-
-            if (player == 1) // black's turn, check for white king in check
-            {
-                King tempKing = new King(board[White_King.Item1, White_King.Item2].Color, board[White_King.Item1, White_King.Item2].Pos);
-
-                List<Piece> temp_Black_Knights = new List<Piece>();
-
-                for(int j = 0; j < 8; j++)
-                {
-                    for(int i = 0; i < 8; i++)
-                    {
-                        if (board[i,j] is Knight)
-                        {
-                            if (board[i,j].Color == -1)
-                            {
-                                temp_Black_Knights.Add(board[i, j]);
-                            }
-                        }
-                    }
-                }
-
-                if (tempKing.Check(board, temp_Black_Knights))
-                {
-                    check = 1;
-                    Check = 1; // update global Check variable
-                    isCheck = true;
-                }
-                else
-                {
-                    Check = 0;
-                }
-            }
-            else if (player == -1) // white's turn, check for black king in check
-            {
-                King? tempKing = new King(0, (-1,-1));
-
-                for(int i = 0; i < 8; i++)
-                {
-                    for (int j = 0; j < 8; j++)
-                    {
-                        if (board[j,i] is King)
-                        {
-                            if (board[j,i].Color  == -1)
-                            {
-                                tempKing = (King)board[j, i];
-                            }
-                        }
-                    }
-                }
-
-                List<Piece> temp_White_Knights = new List<Piece>();
-
-                for (int j = 0; j < 8; j++)
-                {
-                    for (int i = 0; i < 8; i++)
-                    {
-                        if (board[i, j] is Knight)
-                        {
-                            if (board[i, j].Color == 1)
-                            {
-                                temp_White_Knights.Add(board[i, j]);
-                            }
-                        }
-                    }
-                }
-
-                if (tempKing!.Check(board, temp_White_Knights))
-                {
-                    check = -1;
-                    Check = -1;
-                    isCheck = true;
-                }
-                else
-                {
-                    Check = 0;
-                }
-            }
-
-            return isCheck;
-        }
-
-
-        public bool mateCheck(Board board, int player, ref int winner)
-        {
-            Board copy = board.Copy();
-
-            for (int i = 0; i < 8; i++)
-            {
-                for (int j = 0; j < 8; j++)
-                {
-                    if (copy[i, j] != null)
-                    {
-                        if (copy[i, j].Color == player)
-                        {
-                            (int, int)[] moves = copy[i, j].Show_Possible_Moves(copy);
-
-                            foreach (var move in moves)
-                            {
-                                if (Allowed_Move(copy, i, j, move.Item1, move.Item2))
-                                {
-                                    Console.WriteLine($"the move {move} is allowed!");
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Console.WriteLine("MATEMATEMATE");
-            winner = -player;
-            ended = true;
-            return true;
-
-        }
-
-        public bool Allowed_Move(Board board, int from_x, int from_y, int to_x, int to_y)
-        {
-            // create a deep copy of the board
-            Board copy = board.Copy();
-            bool white = false;
-            bool black = false;
-
-
-            if (board[from_x, from_y] is King)
-            {
-                if (board[from_x, from_y].Color == 1)
-                {
-                    White_King = (to_x, to_y);
-                    white = true;
-                }
-                else
-                {
-                    Black_King = (to_x, to_y);
-                    black = true;
-                }
-            }
-
-
-            copy[from_x, from_y]!.Move_to((to_x, to_y), copy);
-
-            // check if the move results in the current player still being in check
-            int tempCheck = 0;
-            bool isCheckAfterMove = checkCheck(copy, ref tempCheck);
-
-            // if the move results in the current player still being in check, it's not allowed
-            if (isCheckAfterMove && tempCheck == player)
-            {
-                if (white)
-                {
-                    White_King = (from_x, from_y);
-                }
-                else if (black)
-                {
-                    Black_King = (from_x, from_y);
-                }
-                return false;
-            }
-
-            // If the move is valid and doesn't leave the player in check, it's allowed
-            if (white)
-            {
-                White_King = (from_x, from_y);
-            }
-            else if (black)  //ugly, but we need to make sure that everything is still the same way as it was before
-            {
-                Black_King = (from_x, from_y);
-            }
-            return true;
-        }
-
-
-
-
+        
         public void HandlePressChessBoard(int i, int j)
         {
+            if (paused || ended) return;
 
-            Console.WriteLine($"({i},{j}), {board[i,j]}");
-            if (board[i,j] is Pawn pawn)
+            if (board[i, j] != null && board[i, j].Color == player)
             {
-                Console.WriteLine(pawn.FirstMove);
+                RestoreBackgrounds();
+                Selected = board[i, j];
+                var legalMoves = board.GenerateLegalMoves(player).Where(m => m.from_x == i && m.from_y == j).ToList();
+                DisplayMoves(legalMoves);
             }
-
-            if (!paused) 
+            else if (ModifiedBgs.Contains((i, j)))
             {
-                if (board[i, j] is not null && board[i, j].Color == player)
-                {
-                    RestoreBackgrounds();
-                    Selected = board[i, j]!;
-                    (int, int)[] moves = board[i, j].Show_Possible_Moves(board); 
-                    foreach ((int, int) cell in moves)
+                RestoreBackgrounds();
+                Move selectedMove = new Move(Selected.Pos.Item1, Selected.Pos.Item2, i, j);
+                
+                // Find the exact move object to get castling flag
+                var legalMovesForPiece = board.GenerateLegalMoves(player).Where(m => m.from_x == Selected.Pos.Item1 && m.from_y == Selected.Pos.Item2);
+                var actualMove = legalMovesForPiece.FirstOrDefault(m => m.to_x == i && m.to_y == j);
+                
+                if (actualMove != null) {
+                    ExecuteMove(actualMove);
+                    if (!ended && player == -1) // If it's now AI's turn
                     {
-                        ModifiedBgs.Add(cell);
-                        DisplayMoves(cell.Item1, cell.Item2);
-
+                        GLib.Idle.Add(() => { aiMove(); return false; });
                     }
-                }
-                else if (ModifiedBgs.Contains((i, j)))
-                {
-                    RestoreBackgrounds();
-
-                    Piece temp = null;
-                    bool temp_capture = false;
-                    bool temp_promotion = false;
-
-                    Move(Selected.Pos.Item1, Selected.Pos.Item2, i, j, false, ref temp_capture, ref temp, ref temp_promotion);
-                    GLib.Idle.Add(() =>  //schedules the ai move to happen after the ui was updated
-                    {
-                        if (player == -1)
-                        {
-                            aiMove();
-                        }
-                        return false;
-                    });
-                }
-                else
-                {
-                    RestoreBackgrounds();
                 }
             }
             else
             {
-                Console.WriteLine("PAUSED");
+                RestoreBackgrounds();
             }
         }
-
-
-
+        
         public void HandlePressChoiseBox(int i)
         {
-
-
-            Piece[] pieces = {
-                new Knight(player, (last_move.Item1.Item1, last_move.Item1.Item2)),
-                new Bishop(player, (last_move.Item1.Item1, last_move.Item1.Item2)),
-                new Rook(player, (last_move.Item1.Item1, last_move.Item1.Item2)),
-                new Queen(player, (last_move.Item1.Item1, last_move.Item1.Item2))
-            };
-
-            board[Selected.Pos.Item1, Selected.Pos.Item2] = pieces[i];
-
-
             paused = false;
+            Piece promotedPiece;
+            (int, int) pos = (last_move_for_promotion.from_x, last_move_for_promotion.from_y);
 
-            Piece temp = null;
-            bool temp_capture = false;
-            bool temp_promotion = false;
+            switch(i)
+            {
+                case 0: promotedPiece = new Knight(player, pos); break;
+                case 1: promotedPiece = new Bishop(player, pos); break;
+                case 2: promotedPiece = new Rook(player, pos); break;
+                default: promotedPiece = new Queen(player, pos); break;
+            }
 
-
-            Move(last_move.Item1.Item1, last_move.Item1.Item2, last_move.Item2.Item1, last_move.Item2.Item2, true, ref temp_capture, ref temp, ref temp_promotion);
+            board[pos.Item1, pos.Item2] = promotedPiece;
+            
+            // Now execute the full move
+            ExecuteMove(last_move_for_promotion);
+             if (!ended && player == -1) // If it's now AI's turn
+            {
+                GLib.Idle.Add(() => { aiMove(); return false; });
+            }
         }
-
+        
         private async Task aiMove()
         {
-
             Move bestMove = await Task.Run(() => agent.GetBestMove(board, -1));
-
-
             if (bestMove is null)
             {
-                winner = 1;
+                // This case should be handled by the CheckEndGame logic, but as a fallback:
+                winner = player; // The player who has no moves loses.
                 WinAnimation(winner);
                 return;
             }
-            bool t = false;
-            Console.WriteLine($"{(bestMove.from_x, bestMove.from_y)} -> {(bestMove.to_x, bestMove.to_y)}");
-            Piece? s = null;
-            bool p = false;
-            Move(bestMove.from_x, bestMove.from_y, bestMove.to_x, bestMove.to_y, false, ref t, ref s, ref p);
+            ExecuteMove(bestMove);
             Console.WriteLine("Computer has made a move");
         }
 
-        public void WinAnimation(int player)
+        public void WinAnimation(int winningPlayer)
         {
-            for (int i = 0; i < 8; i++)
-            {
-                for (int j = 0; j < 8; j++) 
-                {
-                    if (board[i,j] is not null && board[i,j].Color == player)
-                    {
-                        cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
-                    }
-                }
-            }
+            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null && board[i, j].Color == winningPlayer) cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
         }
 
         public void DrawAnimation()
         {
-            for (int i = 0; i < 8; i++)
-            {
-                for (int j = 0; j < 8; j++)
-                {
-                    if (board[i, j] is not null)
-                    {
-                        cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
-                    }
-                }
-            }
+            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null) cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
         }
-
     }
 }
