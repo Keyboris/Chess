@@ -171,7 +171,6 @@ namespace Controller_namespace
                                 return true;
                             }
                         }
-                        // *** THE FIX IS HERE ***
                         else if (p is King king)
                         {
                             // Call the new, non-recursive method for kings to break the loop
@@ -374,7 +373,7 @@ namespace Controller_namespace
                 
                 if (actualMove != null) {
                     ExecuteMove(actualMove);
-                    if (!ended && player == -1) // If it's now AI's turn
+                    if (!ended && player == -1) // If its now AIs turn
                     {
                         GLib.Idle.Add(() => { aiMove(); return false; });
                     }
@@ -404,7 +403,7 @@ namespace Controller_namespace
             
             // Now execute the full move
             ExecuteMove(last_move_for_promotion);
-             if (!ended && player == -1) // If it's now AI's turn
+             if (!ended && player == -1) // If it's now AIs turn
             {
                 GLib.Idle.Add(() => { aiMove(); return false; });
             }
@@ -434,4 +433,5 @@ namespace Controller_namespace
             for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null) cells[i, j].ModifyBg(StateType.Normal, new Gdk.Color(33, 36, 148));
         }
     }
+
 }
