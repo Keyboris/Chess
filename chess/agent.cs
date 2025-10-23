@@ -10,10 +10,13 @@ namespace Agent_namespace
         private Controller ctr;
         public void setController(Controller ctr) { this.ctr = ctr; }
 
-        private const int MaxDepth = 3; // Depth can be increased due to performance improvements
+        private const int MaxDepth = 4; // Depth can be increased due to performance improvements
 
         public Move GetBestMove(Board board, int player)
         {
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: GetBestMove - AI searching for best move for Player {player} at depth {MaxDepth}.");
+
             int bestScore = player == -1 ? int.MaxValue : int.MinValue;
             Move bestMove = null;
 
@@ -47,6 +50,9 @@ namespace Agent_namespace
                     }
                 }
             }
+
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: GetBestMove - AI found best move with score {bestScore}.");
             return bestMove;
         }
 
@@ -110,15 +116,15 @@ namespace Agent_namespace
             }
         }
         
-        #region Evaluation Tables (Unchanged)
+        #region Evaluation Tables 
         public static int[,] BlackPawnTable = new int[8, 8]
         {
             { 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 5, 5, 5, -5, -5, 5, 5, 5 },
-            { 1, 1, 1, 5, 5, 1, 1, 1 },
-            { 0, 0, 0, 10, 10, 0, 0, 0 },
-            { 5, 5, 10, 20, 20, 10, 5, 5 },
-            { 10, 10, 20, 30, 30, 20, 10, 10 },
+            { 1, 1, 1, -1, -1, 1, 1, 1 },
+            { 5, 5, 5, 7, 7, 5, 5, 5 },
+            { 6, 6, 8, 10, 10, 8, 6, 6 },
+            { 8, 8, 10, 20, 20, 10, 8, 8 },
+            { 14, 15, 20, 30, 30, 20, 15, 14 },
             { 50, 50, 50, 50, 50, 50, 50, 50 },
             { 90, 90, 90, 90, 90, 90, 90, 90 }
         };
@@ -127,11 +133,11 @@ namespace Agent_namespace
         {
             { 90, 90, 90, 90, 90, 90, 90, 90 },
             { 50, 50, 50, 50, 50, 50, 50, 50 },
-            { 10, 10, 20, 30, 30, 20, 10, 10 },
-            { 5, 5, 10, 20, 20, 10, 5, 5 },
-            { 0, 0, 0, 10, 10, 0, 0, 0 },
-            { 1, 1, 1, 5, 5, 1, 1, 1 },
-            { 5, 5, 5, -5, -5, 5, 5, 5 },
+            { 14, 15, 20, 30, 30, 20, 14, 15 },
+            { 8, 8, 10, 20, 20, 10, 8, 8 },
+            { 6, 6, 8, 10, 10, 8, 6, 6 },
+            { 5, 5, 5, 7, 7, 5, 5, 5 },
+            { 1, 1, 1, -1, -1, 1, 1, 1 },
             { 0, 0, 0, 0, 0, 0, 0, 0 }
         };
 
