@@ -16,14 +16,24 @@ namespace Controller_namespace
         public bool wasPawnFirstMove;
         public bool isPromotion;
         public bool isCastling;
-        // Add fields for castling rights, en passant, etc., if needed for unmaking
+        public bool movingPieceOldHasMoved;
         public (bool, bool) oldWhiteCastleRights;
         public (bool, bool) oldBlackCastleRights;
 
+        public bool isEnPassant;
+        public (int, int)? oldEnPassantTarget;
+
         public Move(int from_x, int from_y, int to_x, int to_y)
         {
-            this.from_x = from_x; this.from_y = from_y; this.to_x = to_x; this.to_y = to_y;
-            this.capturedPiece = null; this.wasPawnFirstMove = false; this.isPromotion = false; this.isCastling = false;
+            this.from_x = from_x;
+            this.from_y = from_y;
+            this.to_x = to_x; 
+            this.to_y = to_y;
+            this.capturedPiece = null;
+            this.wasPawnFirstMove = false;
+            this.isPromotion = false; 
+            this.isCastling = false;
+            this.isEnPassant = false;
         }
     }
 
@@ -32,6 +42,14 @@ namespace Controller_namespace
         private Piece?[,] board = new Piece?[8, 8];
         private bool canWhiteCastleKingside = true, canWhiteCastleQueenside = true;
         private bool canBlackCastleKingside = true, canBlackCastleQueenside = true;
+
+        private (int, int)? enPassantTarget = null; 
+
+        public (int, int)? EnPassantTarget 
+        { 
+            get => enPassantTarget; 
+            set => enPassantTarget = value; 
+        }
 
         public Piece? this[int i, int j]
         {
@@ -42,11 +60,16 @@ namespace Controller_namespace
         public Board Copy()
         {
             Board copy = new Board();
-            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] != null) copy[i, j] = board[i, j].Copy();
+            for (int i = 0; i < 8; i++) 
+                for (int j = 0; j < 8; j++) 
+                    if (board[i, j] != null) 
+                        copy[i, j] = board[i, j].Copy();
+            
             copy.canWhiteCastleKingside = this.canWhiteCastleKingside;
             copy.canWhiteCastleQueenside = this.canWhiteCastleQueenside;
             copy.canBlackCastleKingside = this.canBlackCastleKingside;
             copy.canBlackCastleQueenside = this.canBlackCastleQueenside;
+            copy.enPassantTarget = this.enPassantTarget;
             return copy;
         }
         
@@ -65,27 +88,66 @@ namespace Controller_namespace
             move.oldWhiteCastleRights = (canWhiteCastleKingside, canWhiteCastleQueenside);
             move.oldBlackCastleRights = (canBlackCastleKingside, canBlackCastleQueenside);
 
+
+            if (move.capturedPiece is Rook capturedRook)
+            {
+                if (capturedRook.Color == 1) // White rook captured
+                {
+                    if (capturedRook.Pos == (0, 7)) canWhiteCastleQueenside = false;
+                    else if (capturedRook.Pos == (7, 7)) canWhiteCastleKingside = false;
+                }
+                else // Black rook captured
+                {
+                    if (capturedRook.Pos == (0, 0)) canBlackCastleQueenside = false;
+                    else if (capturedRook.Pos == (7, 0)) canBlackCastleKingside = false;
+                }
+            }
+        
+            enPassantTarget = null;
+
             if (movingPiece is Pawn pawn)
             {
                 move.wasPawnFirstMove = pawn.FirstMove;
+                
+                // Check if this is a two-square pawn move
+                if (Math.Abs(move.to_y - move.from_y) == 2)
+                {
+                    // Set en passant target to the square the pawn passed over
+                    enPassantTarget = (move.from_x, (move.from_y + move.to_y) / 2);
+                }
+                
+                // Handle en passant capture
+                if (move.isEnPassant)
+                {
+                    // Remove the captured pawn (which is NOT on the destination square)
+                    int capturedPawnY = move.from_y; // Same row as the capturing pawn
+                    move.capturedPiece = this[move.to_x, capturedPawnY];
+                    this[move.to_x, capturedPawnY] = null;
+                }
+                
                 // Check for promotion
                 if ((pawn.Color == 1 && move.to_y == 0) || (pawn.Color == -1 && move.to_y == 7))
                 {
                     move.isPromotion = true;
                     this[move.from_x, move.from_y] = new Queen(pawn.Color, pawn.Pos); // Default to Queen for AI
                 }
-            } else if (movingPiece is King king)
+            } 
+            else if (movingPiece is King king)
             {
+                move.movingPieceOldHasMoved = king.hasMoved;
                 king.hasMoved = true;
                 if (king.Color == 1) { canWhiteCastleKingside = canWhiteCastleQueenside = false; }
                 else { canBlackCastleKingside = canBlackCastleQueenside = false; }
-            } else if (movingPiece is Rook rook)
+            } 
+            else if (movingPiece is Rook rook)
             {
+                move.movingPieceOldHasMoved = rook.hasMoved;
                 if (rook.Color == 1)
                 {
                     if (rook.Pos == (0, 7)) canWhiteCastleQueenside = false;
                     else if (rook.Pos == (7, 7)) canWhiteCastleKingside = false;
-                } else
+                } 
+                else
                 {
                     if (rook.Pos == (0, 0)) canBlackCastleQueenside = false;
                     else if (rook.Pos == (7, 0)) canBlackCastleKingside = false;
@@ -103,7 +165,7 @@ namespace Controller_namespace
             }
             else
             {
-                 movingPiece.Move_to((move.to_x, move.to_y), this);
+                movingPiece.Move_to((move.to_x, move.to_y), this);
             }
         }
 
@@ -111,9 +173,28 @@ namespace Controller_namespace
         {
             Piece movingPiece = this[move.to_x, move.to_y];
 
+            // Restore en passant target
+            enPassantTarget = move.oldEnPassantTarget;
+            
             // Restore castling rights
             (canWhiteCastleKingside, canWhiteCastleQueenside) = move.oldWhiteCastleRights;
             (canBlackCastleKingside, canBlackCastleQueenside) = move.oldBlackCastleRights;
+            
+            // Handle en passant undo
+            if (move.isEnPassant)
+            {
+                // Move the capturing pawn back
+                this[move.from_x, move.from_y] = movingPiece;
+                this[move.to_x, move.to_y] = null;
+                movingPiece.Pos = (move.from_x, move.from_y);
+                
+                // Restore the captured pawn
+                int capturedPawnY = move.from_y;
+                this[move.to_x, capturedPawnY] = move.capturedPiece;
+                
+                if (movingPiece is Pawn movedPawn) movedPawn.FirstMove = move.wasPawnFirstMove;
+                return;
+            }
             
             // Handle castling undo
             if (move.isCastling)
@@ -133,7 +214,7 @@ namespace Controller_namespace
             }
             else
             {
-                 // Handle standard unmove
+                // Handle standard unmove
                 if (move.isPromotion)
                 {
                     movingPiece = new Pawn(movingPiece.Color, movingPiece.Pos);
@@ -144,8 +225,10 @@ namespace Controller_namespace
                 movingPiece.Pos = (move.from_x, move.from_y);
             }
 
+            // Restore hasMoved from the Move object
             if (movingPiece is Pawn pawn) pawn.FirstMove = move.wasPawnFirstMove;
-            if (movingPiece is King king) king.hasMoved = !((king.Color == 1 && king.Pos == (4,7)) || (king.Color == -1 && king.Pos == (4,0)));
+            else if (movingPiece is King king) king.hasMoved = move.movingPieceOldHasMoved;
+            else if (movingPiece is Rook rook) rook.hasMoved = move.movingPieceOldHasMoved;
         }
 
         public (int, int) FindKing(int color)
@@ -227,7 +310,7 @@ namespace Controller_namespace
         public View_namespace.Cell[,] cells = new View_namespace.Cell[8, 8];
         public List<(int, int)> ModifiedBgs = new List<(int, int)>();
         public Piece Selected;
-        public int player = 1;
+        public int player = 1; // Player 1 is White (AI), Player -1 is Black (Human)
         private int winner = 0;
         private bool paused = false;
         public bool ended = false;
@@ -238,6 +321,19 @@ namespace Controller_namespace
         {
             this.agent = agent;
             InitializeBoard();
+        }
+
+        // --- NEW METHOD ---
+        // Call this from your Program.cs after the UI is initialized
+        public void StartGame()
+        {
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: StartGame - Current player is {player}.");
+            if (!ended && player == 1)
+            {
+                Console.WriteLine("DEBUG: StartGame - AI's turn (White). Triggering aiMove().");
+                GLib.Idle.Add(() => { aiMove(); return false; });
+            }
         }
 
         private void InitializeBoard()
@@ -275,12 +371,19 @@ namespace Controller_namespace
         public void ExecuteMove(Move move)
         {
             if (winner != 0 || ended) return;
+
+            // --- DEBUG PRINT ---
+            Piece p = board[move.from_x, move.from_y];
+            if (p != null) {
+                Console.WriteLine($"DEBUG: ExecuteMove - Player {player} is moving {p.Type} from ({move.from_x},{move.from_y}) to ({move.to_x},{move.to_y})");
+            }
             
             // --- Promotion Logic ---
             Piece movingPiece = board[move.from_x, move.from_y];
             if (movingPiece is Pawn && (move.to_y == 0 || move.to_y == 7))
             {
-                if (player == 1) // Human player promotes
+                // --- AI IS WHITE CHANGE ---
+                if (player == -1) // Human player (Black) promotes
                 {
                     paused = true;
                     last_move_for_promotion = move;
@@ -299,11 +402,20 @@ namespace Controller_namespace
         {
             cells[move.from_x, move.from_y].Image.Pixbuf = null;
 
+            foreach (var child in cells[move.to_x, move.to_y].Children) 
+                cells[move.to_x, move.to_y].Remove(child);
 
-            foreach (var child in cells[move.to_x, move.to_y].Children) cells[move.to_x, move.to_y].Remove(child);
-
-
-
+            // Handle en passant capture UI
+            if (move.isEnPassant)
+            {
+                // Remove the captured pawn from its actual position
+                int capturedPawnY = move.from_y; // Same row as the capturing pawn
+                if (cells[move.to_x, capturedPawnY].Image != null)
+                {
+                    cells[move.to_x, capturedPawnY].Remove(cells[move.to_x, capturedPawnY].Image);
+                    cells[move.to_x, capturedPawnY].Image.Pixbuf = null;
+                }
+            }
             
             Piece pieceOnToSquare = board[move.to_x, move.to_y];
             if (pieceOnToSquare != null)
@@ -342,7 +454,13 @@ namespace Controller_namespace
         private void CheckEndGame()
         {
             player = -player; // Switch player
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: CheckEndGame - Player switched. It is now Player {player}'s turn.");
+            
             var legalMoves = board.GenerateLegalMoves(player);
+            
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: CheckEndGame - Found {legalMoves.Count} legal moves for Player {player}.");
             
             if (legalMoves.Count == 0)
             {
@@ -366,13 +484,19 @@ namespace Controller_namespace
         public void HandlePressChessBoard(int i, int j)
         {
             if (paused || ended) return;
+            
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: HandlePressChessBoard - Clicked ({i},{j}). Current player: {player}");
 
+            // This now checks for Black (human) pieces
             if (board[i, j] != null && board[i, j].Color == player)
             {
                 RestoreBackgrounds();
                 Selected = board[i, j];
                 var legalMoves = board.GenerateLegalMoves(player).Where(m => m.from_x == i && m.from_y == j).ToList();
                 DisplayMoves(legalMoves);
+                // --- DEBUG PRINT ---
+                Console.WriteLine($"DEBUG: HandlePressChessBoard - Selected own piece: {board[i, j].Type}. Found {legalMoves.Count} moves.");
             }
             else if (ModifiedBgs.Contains((i, j)))
             {
@@ -384,15 +508,22 @@ namespace Controller_namespace
                 var actualMove = legalMovesForPiece.FirstOrDefault(m => m.to_x == i && m.to_y == j);
                 
                 if (actualMove != null) {
+                    // --- DEBUG PRINT ---
+                    Console.WriteLine($"DEBUG: HandlePressChessBoard - Moving selected piece to ({i},{j}).");
                     ExecuteMove(actualMove);
-                    if (!ended && player == -1)
+                    // --- AI IS WHITE CHANGE ---
+                    if (!ended && player == 1) // AI's (White's) turn
                     {
+                        // --- DEBUG PRINT ---
+                        Console.WriteLine("DEBUG: HandlePressChessBoard - Human move complete. Triggering aiMove().");
                         GLib.Idle.Add(() => { aiMove(); return false; });
                     }
                 }
             }
             else
             {
+                // --- DEBUG PRINT ---
+                Console.WriteLine("DEBUG: HandlePressChessBoard - Clicked empty/invalid square. Restoring backgrounds.");
                 RestoreBackgrounds();
             }
         }
@@ -403,6 +534,7 @@ namespace Controller_namespace
             Piece promotedPiece;
             (int, int) pos = (last_move_for_promotion.from_x, last_move_for_promotion.from_y);
 
+            // player is -1 (Black) here, which is correct
             switch(i)
             {
                 case 0: promotedPiece = new Knight(player, pos); break;
@@ -415,7 +547,8 @@ namespace Controller_namespace
             
             // Now execute the full move
             ExecuteMove(last_move_for_promotion);
-             if (!ended && player == -1)
+             // --- AI IS WHITE CHANGE ---
+             if (!ended && player == 1) // AI's (White's) turn
             {
                 GLib.Idle.Add(() => { aiMove(); return false; });
             }
@@ -423,7 +556,12 @@ namespace Controller_namespace
         
         private async Task aiMove()
         {
-            Move bestMove = await Task.Run(() => agent.GetBestMove(board, -1));
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: aiMove - AI (Player {player}) is thinking...");
+            
+            // --- AI IS WHITE CHANGE ---
+            // Get move for the current player (which is 1, the AI)
+            Move bestMove = await Task.Run(() => agent.GetBestMove(board, player)); 
             if (bestMove is null)
             {
                 // This case should be handled by the CheckEndGame logic, but as a fallback:
@@ -431,8 +569,10 @@ namespace Controller_namespace
                 WinAnimation(winner);
                 return;
             }
+            
+            // --- DEBUG PRINT ---
+            Console.WriteLine($"DEBUG: aiMove - AI has chosen move. Calling ExecuteMove.");
             ExecuteMove(bestMove);
-            Console.WriteLine("Computer has made a move");
         }
 
         public void WinAnimation(int winningPlayer)
