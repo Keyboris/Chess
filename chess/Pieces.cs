@@ -99,7 +99,7 @@ namespace Pieces_namespace
                 }
             }
 
-            // Captures
+            // Regular captures
             int[] capture_dirs = { -1, 1 };
             foreach (int dir in capture_dirs)
             {
@@ -111,7 +111,20 @@ namespace Pieces_namespace
                 }
             }
 
-            // TODO: Implement En Passant logic here
+            // En Passant logic
+            if (board.EnPassantTarget.HasValue)
+            {
+                (int ep_x, int ep_y) = board.EnPassantTarget.Value;
+                
+                // Check if the en passant target square is diagonally adjacent
+                int to_y = from_y - color;
+                if (to_y == ep_y && Math.Abs(from_x - ep_x) == 1)
+                {
+                    Move enPassantMove = new Move(from_x, from_y, ep_x, ep_y);
+                    enPassantMove.isEnPassant = true;
+                    Moves.Add(enPassantMove);
+                }
+            }
 
             return Moves;
         }
