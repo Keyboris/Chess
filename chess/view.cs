@@ -116,6 +116,11 @@ namespace View_namespace
             ctr = Win.ctr;
             Win.ShowAll();
 
+            // --- THIS IS THE FIX ---
+            Console.WriteLine("DEBUG: Main - Calling ctr.StartGame() to begin.");
+            ctr.StartGame();
+            // ---------------------
+
             Gtk.Application.Run();
         }
 
