@@ -11,7 +11,7 @@ namespace Agent_namespace
         private Controller ctr;
         public void setController(Controller ctr) { this.ctr = ctr; }
 
-        private const int MaxDepth = 5; // Depth can be increased due to performance improvements
+        private const int MaxDepth = 4; // Depth can be increased due to performance improvements
         private static int maxPhase = 78;
         private static int currentPhase = 78;
         public Move GetBestMove(Board board, int player)
