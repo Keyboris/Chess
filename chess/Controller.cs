@@ -9,6 +9,7 @@ using System.Diagnostics.Tracing;
 
 namespace Controller_namespace
 {
+
     public class Move
     {
         public int from_x, from_y, to_x, to_y;
@@ -37,13 +38,14 @@ namespace Controller_namespace
         }
     }
 
+    // (Board class from line 41 to 326)
     public class Board
     {
         private Piece?[,] board = new Piece?[8, 8];
         private bool canWhiteCastleKingside = true, canWhiteCastleQueenside = true;
         private bool canBlackCastleKingside = true, canBlackCastleQueenside = true;
 
-        private int whiteScore = 12, blackScore = 12;
+        private int whiteScore = 0, blackScore = 0;
 
         public int getWhiteScore => whiteScore;
         public int getBlackScore => blackScore;
@@ -76,16 +78,45 @@ namespace Controller_namespace
             copy.enPassantTarget = this.enPassantTarget;
             return copy;
         }
-        
+
         public bool CanCastle(int color, bool isKingside)
         {
             if (color == 1) return isKingside ? canWhiteCastleKingside : canWhiteCastleQueenside;
             return isKingside ? canBlackCastleKingside : canBlackCastleQueenside;
         }
+        
+        public void CalculateInitialScores()
+        {
+            whiteScore = 0;
+            blackScore = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                for (int j = 0; j < 8; j++)
+                {
+                    if (board[i, j] != null)
+                    {
+                        if (board[i, j].Color == 1)
+                            whiteScore += board[i, j].Score;
+                        else
+                            blackScore += board[i, j].Score;
+                    }
+                }
+            }
+            Console.WriteLine($"DEBUG: Initial scores calculated. White: {whiteScore}, Black: {blackScore}");
+        }
 
         public void MakeMove(Move move)
         {
+            // If this[move.from_x, move.from_y] is null, it's because of a bad
+            // board setup in InitializeBoard. This prevents an immediate crash.
             Piece movingPiece = this[move.from_x, move.from_y];
+            if (movingPiece == null)
+            {
+                // This should not happen if the board is set up correctly.
+                Console.WriteLine($"ERROR: MakeMove - No piece found at ({move.from_x},{move.from_y}). Check InitializeBoard setup.");
+                return;
+            }
+
             move.capturedPiece = this[move.to_x, move.to_y];
 
             if (move.capturedPiece is not null)
@@ -119,6 +150,7 @@ namespace Controller_namespace
                 }
             }
         
+            move.oldEnPassantTarget = enPassantTarget;
             enPassantTarget = null;
 
             if (movingPiece is Pawn pawn)
@@ -266,8 +298,14 @@ namespace Controller_namespace
 
         public (int, int) FindKing(int color)
         {
-            for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) if (board[i, j] is King k && k.Color == color) return (i, j);
-            return (-1, -1); // Should not happen
+            for (int i = 0; i < 8; i++) 
+                for (int j = 0; j < 8; j++) 
+                    if (board[j, i] is King k && k.Color == color) 
+                        return (j, i);
+            
+            // This is now a critical error. The AI cannot function without kings.
+            string colorName = (color == 1) ? "White" : "Black";
+            throw new InvalidOperationException($"CRITICAL ERROR: No {colorName} King found on the board. The AI cannot function without a King. Please check your InitializeBoard setup.");
         }
 
         public bool IsSquareAttacked((int, int) square, int attackerColor)
@@ -343,7 +381,11 @@ namespace Controller_namespace
         public View_namespace.Cell[,] cells = new View_namespace.Cell[8, 8];
         public List<(int, int)> ModifiedBgs = new List<(int, int)>();
         public Piece Selected;
-        public int player = 1; // Player 1 is White (AI), Player -1 is Black (Human)
+
+        private const int AI_PLAYER = 1;
+        private const int HUMAN_PLAYER = -1;
+
+        public int player = AI_PLAYER; // Player 1 is White (AI), Player -1 is Black (Human)
         private int winner = 0;
         private bool paused = false;
         public bool ended = false;
@@ -356,13 +398,11 @@ namespace Controller_namespace
             InitializeBoard();
         }
 
-        // --- NEW METHOD ---
         // Call this from your Program.cs after the UI is initialized
         public void StartGame()
         {
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: StartGame - Current player is {player}.");
-            if (!ended && player == 1)
+            if (!ended && player == AI_PLAYER)
             {
                 Console.WriteLine("DEBUG: StartGame - AI's turn (White). Triggering aiMove().");
                 GLib.Idle.Add(() => { aiMove(); return false; });
@@ -371,17 +411,52 @@ namespace Controller_namespace
 
         private void InitializeBoard()
         {
-            for (int i = 0; i < 8; i++) { board[i, 1] = new Pawn(-1, (i, 1)); board[i, 6] = new Pawn(1, (i, 6)); }
-            // Rooks
-            board[0, 0] = new Rook(-1, (0, 0)); board[7, 0] = new Rook(-1, (7, 0)); board[0, 7] = new Rook(1, (0, 7)); board[7, 7] = new Rook(1, (7, 7));
+
+            // 1. Clear the board
+            for (int i = 0; i < 8; i++)
+                for (int j = 0; j < 8; j++)
+                    board[i, j] = null;
+        
+
+            // Pawns
+            for (int i = 0; i < 8; i++) 
+            {
+                board[i, 1] = new Pawn(-1, (i, 1)); 
+                board[i, 6] = new Pawn(1, (i, 6));
+            }
+            
+            // // Rooks
+            board[0, 0] = new Rook(-1, (0, 0)); 
+            board[7, 0] = new Rook(-1, (7, 0)); 
+            board[0, 7] = new Rook(1, (0, 7)); 
+            board[7, 7] = new Rook(1, (7, 7));
+            
             // Knights
-            board[1, 0] = new Knight(-1, (1, 0)); board[6, 0] = new Knight(-1, (6, 0)); board[1, 7] = new Knight(1, (1, 7)); board[6, 7] = new Knight(1, (6, 7));
+            board[1, 0] = new Knight(-1, (1, 0)); 
+            board[6, 0] = new Knight(-1, (6, 0)); 
+            board[1, 7] = new Knight(1, (1, 7)); 
+            board[6, 7] = new Knight(1, (6, 7));
+            
             // Bishops
-            board[2, 0] = new Bishop(-1, (2, 0)); board[5, 0] = new Bishop(-1, (5, 0)); board[2, 7] = new Bishop(1, (2, 7)); board[5, 7] = new Bishop(1, (5, 7));
+            board[2, 0] = new Bishop(-1, (2, 0)); 
+            board[5, 0] = new Bishop(-1, (5, 0)); 
+            board[2, 7] = new Bishop(1, (2, 7)); 
+            board[5, 7] = new Bishop(1, (5, 7));
+            
             // Queens
-            board[3, 0] = new Queen(-1, (3, 0)); board[3, 7] = new Queen(1, (3, 7));
+            board[3, 0] = new Queen(-1, (3, 0)); 
+            board[3, 7] = new Queen(1, (3, 7));
+            
             // Kings
-            board[4, 0] = new King(-1, (4, 0)); board[4, 7] = new King(1, (4, 7));
+            board[4, 0] = new King(-1, (4, 0)); 
+            board[4, 7] = new King(1, (4, 7));
+
+
+            board.CalculateInitialScores();
+
+            var blackKingPos = board.FindKing(-1);
+            var whiteKingPos = board.FindKing(1);
+            Console.WriteLine($"DEBUG: InitializeBoard - Black King at {blackKingPos}, White King at {whiteKingPos}");
         }
 
 
@@ -400,23 +475,22 @@ namespace Controller_namespace
                 cells[move.to_x, move.to_y].ModifyBg(StateType.Normal, moveColor);
             }
         }
-        
+
         public void ExecuteMove(Move move)
         {
             if (winner != 0 || ended) return;
 
-            // --- DEBUG PRINT ---
             Piece p = board[move.from_x, move.from_y];
-            if (p != null) {
+            if (p != null)
+            {
                 Console.WriteLine($"DEBUG: ExecuteMove - Player {player} is moving {p.Type} from ({move.from_x},{move.from_y}) to ({move.to_x},{move.to_y})");
             }
-            
+
             // --- Promotion Logic ---
             Piece movingPiece = board[move.from_x, move.from_y];
             if (movingPiece is Pawn && (move.to_y == 0 || move.to_y == 7))
             {
-                // --- AI IS WHITE CHANGE ---
-                if (player == -1) // Human player (Black) promotes
+                if (player == HUMAN_PLAYER) // Human player (Black) promotes
                 {
                     paused = true;
                     last_move_for_promotion = move;
@@ -433,10 +507,42 @@ namespace Controller_namespace
 
             CheckEndGame();
         }
+        
+        public void DrawInitialBoardState()
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                for (int j = 0; j < 8; j++)
+                {
+                    // Clear any old images (from the standard setup)
+                    if (cells[i, j].Image != null)
+                    {
+                        cells[i, j].Remove(cells[i, j].Image);
+                        cells[i, j].Image = null;
+                    }
+
+                    // If a piece exists in our logic, draw it
+                    if (board[i, j] != null)
+                    {
+                        Piece p = board[i, j];
+                        Gdk.Pixbuf originalPixbuf = new Gdk.Pixbuf(p.Address);
+                        var scaledPixbuf = originalPixbuf.ScaleSimple(90, 90, Gdk.InterpType.Bilinear);
+                        
+                        Image pieceImage = new Image(scaledPixbuf);
+                        cells[i, j].Image = pieceImage; // Store reference
+                        cells[i, j].Add(pieceImage);   // Add to UI
+                        cells[i, j].Image.Show();
+                    }
+                }
+            }
+        }
 
         private void UpdateUI(Move move)
         {
-            cells[move.from_x, move.from_y].Image.Pixbuf = null;
+            if (cells[move.from_x, move.from_y].Image != null)
+            {
+                cells[move.from_x, move.from_y].Image.Pixbuf = null;
+            }
 
             foreach (var child in cells[move.to_x, move.to_y].Children) 
                 cells[move.to_x, move.to_y].Remove(child);
@@ -490,12 +596,10 @@ namespace Controller_namespace
         private void CheckEndGame()
         {
             player = -player; // Switch player
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: CheckEndGame - Player switched. It is now Player {player}'s turn.");
             
             var legalMoves = board.GenerateLegalMoves(player);
             
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: CheckEndGame - Found {legalMoves.Count} legal moves for Player {player}.");
             
             if (legalMoves.Count == 0)
@@ -519,19 +623,19 @@ namespace Controller_namespace
         
         public void HandlePressChessBoard(int i, int j)
         {
-            if (paused || ended) return;
+            // This line locks all input unless it's the human's turn.
+            if (paused || ended || player != HUMAN_PLAYER) return; 
             
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: HandlePressChessBoard - Clicked ({i},{j}). Current player: {player}");
 
-            // This now checks for Black (human) pieces
+            // This check is still good. It ensures the human (player -1) can only select their own pieces.
             if (board[i, j] != null && board[i, j].Color == player)
             {
                 RestoreBackgrounds();
                 Selected = board[i, j];
                 var legalMoves = board.GenerateLegalMoves(player).Where(m => m.from_x == i && m.from_y == j).ToList();
                 DisplayMoves(legalMoves);
-                // --- DEBUG PRINT ---
+
                 Console.WriteLine($"DEBUG: HandlePressChessBoard - Selected own piece: {board[i, j].Type}. Found {legalMoves.Count} moves.");
             }
             else if (ModifiedBgs.Contains((i, j)))
@@ -544,13 +648,11 @@ namespace Controller_namespace
                 var actualMove = legalMovesForPiece.FirstOrDefault(m => m.to_x == i && m.to_y == j);
                 
                 if (actualMove != null) {
-                    // --- DEBUG PRINT ---
                     Console.WriteLine($"DEBUG: HandlePressChessBoard - Moving selected piece to ({i},{j}).");
                     ExecuteMove(actualMove);
-                    // --- AI IS WHITE CHANGE ---
-                    if (!ended && player == 1) // AI's (White's) turn
+                    
+                    if (!ended && player == AI_PLAYER)
                     {
-                        // --- DEBUG PRINT ---
                         Console.WriteLine("DEBUG: HandlePressChessBoard - Human move complete. Triggering aiMove().");
                         GLib.Idle.Add(() => { aiMove(); return false; });
                     }
@@ -558,7 +660,6 @@ namespace Controller_namespace
             }
             else
             {
-                // --- DEBUG PRINT ---
                 Console.WriteLine("DEBUG: HandlePressChessBoard - Clicked empty/invalid square. Restoring backgrounds.");
                 RestoreBackgrounds();
             }
@@ -570,7 +671,7 @@ namespace Controller_namespace
             Piece promotedPiece;
             (int, int) pos = (last_move_for_promotion.from_x, last_move_for_promotion.from_y);
 
-            // player is -1 (Black) here, which is correct
+            // player is -1 (Black/Human) here, which is correct
             switch(i)
             {
                 case 0: promotedPiece = new Knight(player, pos); break;
@@ -583,8 +684,8 @@ namespace Controller_namespace
             
             // Now execute the full move
             ExecuteMove(last_move_for_promotion);
-             // --- AI IS WHITE CHANGE ---
-             if (!ended && player == 1) // AI's (White's) turn
+             
+            if (!ended && player == AI_PLAYER) 
             {
                 GLib.Idle.Add(() => { aiMove(); return false; });
             }
@@ -592,10 +693,8 @@ namespace Controller_namespace
         
         private async Task aiMove()
         {
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: aiMove - AI (Player {player}) is thinking...");
             
-            // --- AI IS WHITE CHANGE ---
             // Get move for the current player (which is 1, the AI)
             Move bestMove = await Task.Run(() => agent.GetBestMove(board, player)); 
             if (bestMove is null)
@@ -606,7 +705,6 @@ namespace Controller_namespace
                 return;
             }
             
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: aiMove - AI has chosen move. Calling ExecuteMove.");
             ExecuteMove(bestMove);
         }
