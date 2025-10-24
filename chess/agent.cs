@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using Controller_namespace;
 using Pieces_namespace;
 
@@ -10,8 +11,9 @@ namespace Agent_namespace
         private Controller ctr;
         public void setController(Controller ctr) { this.ctr = ctr; }
 
-        private const int MaxDepth = 4; // Depth can be increased due to performance improvements
-
+        private const int MaxDepth = 5; // Depth can be increased due to performance improvements
+        private static int maxPhase = 78;
+        private static int currentPhase = 78;
         public Move GetBestMove(Board board, int player)
         {
             // --- DEBUG PRINT ---
@@ -237,7 +239,7 @@ namespace Agent_namespace
             { -20, -10, -10, -5, -5, -10, -10, -20 }
         };
 
-        public static int[,] WhiteKingTable = new int[8, 8]
+        public static int[,] WhiteKingMidgame = new int[8, 8]
         {
             { -30, -40, -40, -50, -50, -40, -40, -30 },
             { -30, -40, -40, -50, -50, -40, -40, -30 },
@@ -245,14 +247,14 @@ namespace Agent_namespace
             { -30, -40, -40, -50, -50, -40, -40, -30 },
             { -20, -30, -30, -40, -40, -30, -30, -20 },
             { -10, -20, -20, -20, -20, -20, -20, -10 },
-            { 20, 20, 0, 0, 0, 0, 20, 20 },
-            { 20, 30, 10, 0, 0, 10, 30, 20 }
+            {  20,  20,   0,   0,   0,   0,  20,  20 },
+            {  20,  30,  10,   0,   0,  10,  30,  20 }
         };
 
-        public static int[,] BlackKingTable = new int[8, 8]
+        public static int[,] BlackKingMidgame = new int[8, 8]
         {
-            { 20, 30, 10, 0, 0, 10, 30, 20 },
-            { 20, 20, 0, 0, 0, 0, 20, 20 },
+            {  20,  30,  10,   0,   0,  10,  30,  20 },
+            {  20,  20,   0,   0,   0,   0,  20,  20 },
             { -10, -20, -20, -20, -20, -20, -20, -10 },
             { -20, -30, -30, -40, -40, -30, -30, -20 },
             { -30, -40, -40, -50, -50, -40, -40, -30 },
@@ -261,17 +263,47 @@ namespace Agent_namespace
             { -30, -40, -40, -50, -50, -40, -40, -30 }
         };
 
+        public static int[,] WhiteKingEndgame = new int[8, 8]
+        {
+            { -50, -30, -30, -30, -30, -30, -30, -50 },
+            { -30, -15, -10, -10, -10, -10, -15, -30 },
+            { -30, -10,  20,  30,  30,  20, -10, -30 },
+            { -30, -10,  30,  40,  40,  30, -10, -30 },
+            { -30, -10,  30,  40,  40,  30, -10, -30 },
+            { -30, -10,  20,  30,  30,  20, -10, -30 },
+            { -30, -20, -10,   0,   0, -10, -20, -30 },
+            { -50, -40, -30, -20, -20, -30, -40, -50 }
+        };
+
+        public static int[,] BlackKingEndgame = new int[8, 8]
+        {
+            { -50, -40, -30, -20, -20, -30, -40, -50 },
+            { -30, -20, -10,   0,   0, -10, -20, -30 },
+            { -30, -10,  20,  30,  30,  20, -10, -30 },
+            { -30, -10,  30,  40,  40,  30, -10, -30 },
+            { -30, -10,  30,  40,  40,  30, -10, -30 },
+            { -30, -10,  20,  30,  30,  20, -10, -30 },
+            { -30, -15, -10, -10, -10, -10, -15, -30 },
+            { -50, -30, -30, -30, -30, -30, -30, -50 }
+        };
+
         #endregion
 
-        private static int PositionValue(Piece p)
+        private static int PositionValue(Piece p, Board board)
         {
+            currentPhase = int.Min(maxPhase, board.getBlackScore + board.getWhiteScore);
+            double phaseRatio = (double)currentPhase / maxPhase; 
+
             if (p.Color == 1)
             {
                 return p.Type switch
                 {
-                    "Pawn" => WhitePawnTable[p.Pos.Item2, p.Pos.Item1], "Knight" => WhiteKnightTable[p.Pos.Item2, p.Pos.Item1],
-                    "Bishop" => WhiteBishopTable[p.Pos.Item2, p.Pos.Item1], "Rook" => WhiteRookTable[p.Pos.Item2, p.Pos.Item1],
-                    "Queen" => WhiteQueenTable[p.Pos.Item2, p.Pos.Item1], "King" => WhiteKingTable[p.Pos.Item2, p.Pos.Item1],
+                    "Pawn" => WhitePawnTable[p.Pos.Item2, p.Pos.Item1],
+                    "Knight" => WhiteKnightTable[p.Pos.Item2, p.Pos.Item1],
+                    "Bishop" => WhiteBishopTable[p.Pos.Item2, p.Pos.Item1],
+                    "Rook" => WhiteRookTable[p.Pos.Item2, p.Pos.Item1],
+                    "Queen" => WhiteQueenTable[p.Pos.Item2, p.Pos.Item1],
+                    "King" => (int)(phaseRatio * WhiteKingMidgame[p.Pos.Item2, p.Pos.Item1] + (1 - phaseRatio) * WhiteKingEndgame[p.Pos.Item2, p.Pos.Item1]),
                     _ => 0
                 };
             }
@@ -279,9 +311,12 @@ namespace Agent_namespace
             {
                 return p.Type switch
                 {
-                    "Pawn" => BlackPawnTable[p.Pos.Item2, p.Pos.Item1], "Knight" => BlackKnightTable[p.Pos.Item2, p.Pos.Item1],
-                    "Bishop" => BlackBishopTable[p.Pos.Item2, p.Pos.Item1], "Rook" => BlackRookTable[p.Pos.Item2, p.Pos.Item1],
-                    "Queen" => BlackQueenTable[p.Pos.Item2, p.Pos.Item1], "King" => BlackKingTable[p.Pos.Item2, p.Pos.Item1],
+                    "Pawn" => BlackPawnTable[p.Pos.Item2, p.Pos.Item1],
+                    "Knight" => BlackKnightTable[p.Pos.Item2, p.Pos.Item1],
+                    "Bishop" => BlackBishopTable[p.Pos.Item2, p.Pos.Item1],
+                    "Rook" => BlackRookTable[p.Pos.Item2, p.Pos.Item1],
+                    "Queen" => BlackQueenTable[p.Pos.Item2, p.Pos.Item1],
+                    "King" => (int)(phaseRatio * BlackKingMidgame[p.Pos.Item2, p.Pos.Item1] + (1 - phaseRatio) * BlackKingEndgame[p.Pos.Item2, p.Pos.Item1]),
                     _ => 0
                 };
             }
@@ -289,7 +324,8 @@ namespace Agent_namespace
 
         private static int Evaluate(Board board)
         {
-            // Evaluation is always from white's perspective (positive is good for white)
+            // Evaluation is always from whites perspective (positive is good for white)
+
             int score = 0;
             Dictionary<string, int> values = new Dictionary<string, int>()
             {
@@ -303,7 +339,7 @@ namespace Agent_namespace
                     if (board[j, i] is not null)
                     {
                         Piece p = board[j, i];
-                        score += (values[p.Type] + PositionValue(p)) * p.Color;
+                        score += (values[p.Type] + PositionValue(p, board)) * p.Color;
                     }
                 }
             }
