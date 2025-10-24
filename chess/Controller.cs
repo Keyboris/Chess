@@ -43,6 +43,10 @@ namespace Controller_namespace
         private bool canWhiteCastleKingside = true, canWhiteCastleQueenside = true;
         private bool canBlackCastleKingside = true, canBlackCastleQueenside = true;
 
+        private int whiteScore = 12, blackScore = 12;
+
+        public int getWhiteScore => whiteScore;
+        public int getBlackScore => blackScore;
         private (int, int)? enPassantTarget = null; 
 
         public (int, int)? EnPassantTarget 
@@ -83,6 +87,18 @@ namespace Controller_namespace
         {
             Piece movingPiece = this[move.from_x, move.from_y];
             move.capturedPiece = this[move.to_x, move.to_y];
+
+            if (move.capturedPiece is not null)
+            {
+                if (move.capturedPiece.Color == 1)
+                {
+                    whiteScore -= move.capturedPiece.Score;
+                }
+                else
+                {
+                    blackScore -= move.capturedPiece.Score;
+                }
+            }
             
             // Store old castling rights for unmove
             move.oldWhiteCastleRights = (canWhiteCastleKingside, canWhiteCastleQueenside);
@@ -129,7 +145,11 @@ namespace Controller_namespace
                 if ((pawn.Color == 1 && move.to_y == 0) || (pawn.Color == -1 && move.to_y == 7))
                 {
                     move.isPromotion = true;
-                    this[move.from_x, move.from_y] = new Queen(pawn.Color, pawn.Pos); // Default to Queen for AI
+                    
+                    Piece promoted = new Queen(pawn.Color, (move.from_x, move.from_y)); 
+
+                    this[move.from_x, move.from_y] = promoted; 
+                    movingPiece = promoted; 
                 }
             } 
             else if (movingPiece is King king)
@@ -223,6 +243,19 @@ namespace Controller_namespace
                 this[move.from_x, move.from_y] = movingPiece;
                 this[move.to_x, move.to_y] = move.capturedPiece;
                 movingPiece.Pos = (move.from_x, move.from_y);
+
+                if (move.capturedPiece is not null)
+                {
+                    if (move.capturedPiece.Color == 1)
+                    {
+                        whiteScore += move.capturedPiece.Score;
+                    }
+                    else
+                    {
+                        blackScore += move.capturedPiece.Score;
+                    }
+                }
+
             }
 
             // Restore hasMoved from the Move object
@@ -338,7 +371,6 @@ namespace Controller_namespace
 
         private void InitializeBoard()
         {
-            // Pawns
             for (int i = 0; i < 8; i++) { board[i, 1] = new Pawn(-1, (i, 1)); board[i, 6] = new Pawn(1, (i, 6)); }
             // Rooks
             board[0, 0] = new Rook(-1, (0, 0)); board[7, 0] = new Rook(-1, (7, 0)); board[0, 7] = new Rook(1, (0, 7)); board[7, 7] = new Rook(1, (7, 7));
@@ -351,6 +383,7 @@ namespace Controller_namespace
             // Kings
             board[4, 0] = new King(-1, (4, 0)); board[4, 7] = new King(1, (4, 7));
         }
+
 
         public void RestoreBackgrounds()
         {
@@ -395,6 +428,9 @@ namespace Controller_namespace
 
             board.MakeMove(move);
             UpdateUI(move);
+
+            Console.WriteLine($"White score: {board.getWhiteScore}, Black score: {board.getBlackScore}");
+
             CheckEndGame();
         }
 
