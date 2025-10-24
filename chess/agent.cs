@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Net.Quic;
 using Controller_namespace;
 using Pieces_namespace;
 
@@ -16,7 +17,6 @@ namespace Agent_namespace
         private static int currentPhase = 78;
         public Move GetBestMove(Board board, int player)
         {
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: GetBestMove - AI searching for best move for Player {player} at depth {MaxDepth}.");
 
             int bestScore = player == -1 ? int.MaxValue : int.MinValue;
@@ -53,7 +53,6 @@ namespace Agent_namespace
                 }
             }
 
-            // --- DEBUG PRINT ---
             Console.WriteLine($"DEBUG: GetBestMove - AI found best move with score {bestScore}.");
             return bestMove;
         }
@@ -62,7 +61,7 @@ namespace Agent_namespace
         {
             if (depth >= MaxDepth)
             {
-                return Evaluate(board);
+                return qSearch(board, player, alpha, beta);
             }
 
             List<Move> legalMoves = board.GenerateLegalMoves(player);
@@ -80,10 +79,14 @@ namespace Agent_namespace
                 return 0;
             }
 
+            var sortedMoves = legalMoves
+            .OrderByDescending(move => GetMovePriorityScore(move, board))
+            .ToList();
+
             if (player == 1) // White, maximizing player
             {
                 int maxEval = int.MinValue;
-                foreach (var move in legalMoves)
+                foreach (var move in sortedMoves)
                 {
                     board.MakeMove(move);
                     int score = Minimax(board, -player, depth + 1, alpha, beta);
@@ -101,7 +104,7 @@ namespace Agent_namespace
             else // Black, minimizing player
             {
                 int minEval = int.MaxValue;
-                foreach (var move in legalMoves)
+                foreach (var move in sortedMoves)
                 {
                     board.MakeMove(move);
                     int score = Minimax(board, -player, depth + 1, alpha, beta);
@@ -117,7 +120,121 @@ namespace Agent_namespace
                 return minEval;
             }
         }
+
+
+        private int qSearch(Board board, int player, int alpha, int beta)
+        {
+            int standPat = Evaluate(board);
+
+            if (player == 1) // White, maximising player
+            {
+                if (standPat >= beta)
+                {
+                    return beta; // Fail-soft beta cutoff
+                }
+                if (standPat > alpha)
+                {
+                    alpha = standPat;
+                }
+            }
+            else // Black, minimizing player
+            {
+                if (standPat <= alpha)
+                {
+                    return alpha; // Fail-soft alpha cutoff
+                }
+                if (standPat < beta)
+                {
+                    beta = standPat;
+                }
+            }
+            
+            var legalMoves = board.GenerateLegalMoves(player); 
+
+            var captureMoves = legalMoves.Where(move => board[move.to_x, move.to_y] is not null);
+            
+            //var checkMoves = legalMoves.Where(move => move.IsChecking);
+
+            HashSet<Move> tacticalMoves = new HashSet<Move>(captureMoves);
+            //tacticalMoves.UnionWith(checkMoves);
+
+            var promotionMoves = legalMoves.Where(move => move.isPromotion);
+            tacticalMoves.UnionWith(promotionMoves);
+
+            if (tacticalMoves.Count == 0)
+            {
+                return standPat;
+            }
+
+            var sortedTacticalMoves = tacticalMoves
+                .OrderByDescending(move => GetMovePriorityScore(move, board))
+                .ToList();
+
+            if (player == 1) // White, maximizing player
+            {
+                foreach (Move move in sortedTacticalMoves)
+                {
+                    board.MakeMove(move);
+                    int score = qSearch(board, -player, alpha, beta); // Recurse
+                    board.UnmakeMove(move);
+
+                    if (score >= beta)
+                    {
+                        return beta; // Beta cutoff
+                    }
+                    if (score > alpha)
+                    {
+                        alpha = score;
+                    }
+                }
+                return alpha; // Return the best score found
+            }
+            else // Black, minimizing player
+            {
+                foreach (Move move in sortedTacticalMoves)
+                {
+                    board.MakeMove(move);
+                    int score = qSearch(board, -player, alpha, beta); // Recurse
+                    board.UnmakeMove(move);
+
+                    if (score <= alpha)
+                    {
+                        return alpha; // Alpha cutoff
+                    }
+                    if (score < beta)
+                    {
+                        beta = score;
+                    }
+                }
+                return beta; // Return the best score found
+            }
+        }
         
+
+        private int GetMovePriorityScore(Move move, Board board)
+        {
+            int score = 0;
+
+            if (board[move.to_x, move.to_y] is Piece victim)
+            {
+                int victimValue = victim.Score; 
+                int aggressorValue = board[move.from_x, move.from_y].Score;
+                
+                score += 1000000 + (victimValue * 1000 - aggressorValue);
+            }
+            
+            if (move.IsChecking)
+            {
+                score += 500000;
+            }
+            
+            if (move.isPromotion)
+            {
+                score += 200000;
+            }
+            
+            return score;
+        }
         #region Evaluation Tables 
         public static int[,] BlackPawnTable = new int[8, 8]
         {
