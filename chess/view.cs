@@ -68,6 +68,8 @@ namespace View_namespace
             this.ctr = ctr;
             agent.setController(ctr);   //an easier and faster alternative to observer methods
 
+            
+
             SetDefaultSize(700, 700);
             Resizable = false;
             SetPosition(WindowPosition.Center);
@@ -89,6 +91,7 @@ namespace View_namespace
 
             overlay.Add(table);
             Add(overlay);
+
         }
         
             private void OnWindowDeleteEvent(object sender, DeleteEventArgs a)
@@ -115,6 +118,12 @@ namespace View_namespace
             Win = new MainWindow();
             ctr = Win.ctr;
             Win.ShowAll();
+
+            // --- FIX: ADD THIS LINE ---
+            // This forces the UI to draw the custom board from your Controller,
+            // fixing both the visual bug and the NullReferenceException.
+            ctr.DrawInitialBoardState(); 
+            // --------------------------
 
             // --- THIS IS THE FIX ---
             Console.WriteLine("DEBUG: Main - Calling ctr.StartGame() to begin.");
