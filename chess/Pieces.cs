@@ -57,6 +57,11 @@ namespace Pieces_namespace
 
             return sourceDirectory;
         }
+
+        public static implicit operator int(Piece? v)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     class Pawn : Piece
