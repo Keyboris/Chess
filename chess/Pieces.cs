@@ -121,9 +121,11 @@ namespace Pieces_namespace
             {
                 (int ep_x, int ep_y) = board.EnPassantTarget.Value;
                 
+                
+
                 // Check if the en passant target square is diagonally adjacent
                 int to_y = from_y - color;
-                if (to_y == ep_y && Math.Abs(from_x - ep_x) == 1)
+                if (to_y == ep_y && Math.Abs(from_x - ep_x) == 1)  
                 {
                     Move enPassantMove = new Move(from_x, from_y, ep_x, ep_y);
                     enPassantMove.isEnPassant = true;
