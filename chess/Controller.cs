@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System;
 using System.Diagnostics.Tracing;
+using System.Runtime.CompilerServices;
 
 namespace Controller_namespace
 {
@@ -23,18 +24,32 @@ namespace Controller_namespace
 
         public bool isEnPassant;
         public (int, int)? oldEnPassantTarget;
+        private bool isMating = false;
+        private bool isChecking = false;
 
         public Move(int from_x, int from_y, int to_x, int to_y)
         {
             this.from_x = from_x;
             this.from_y = from_y;
-            this.to_x = to_x; 
+            this.to_x = to_x;
             this.to_y = to_y;
             this.capturedPiece = null;
             this.wasPawnFirstMove = false;
-            this.isPromotion = false; 
+            this.isPromotion = false;
             this.isCastling = false;
             this.isEnPassant = false;
+        }
+        
+        public bool IsChecking
+        {
+            get => isChecking;
+            set => isChecking = value;
+        }
+        
+        public bool IsMating
+        {
+            get => isMating;
+            set => isMating = value;
         }
     }
 
@@ -62,6 +77,8 @@ namespace Controller_namespace
             set => board[i, j] = value;
             get => board[i, j];
         }
+
+
 
         public Board Copy()
         {
@@ -364,6 +381,11 @@ namespace Controller_namespace
                             var kingPos = FindKing(color);
                             if (!IsSquareAttacked(kingPos, -color))
                             {
+                                var opponentKingPos = FindKing(-color);
+                                if (IsSquareAttacked(opponentKingPos, color)) // 'color' is the attacking player
+                                {
+                                    move.IsChecking = true;
+                                }
                                 legalMoves.Add(move);
                             }
                             UnmakeMove(move);
