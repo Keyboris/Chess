@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Linq;
+using System.Xml.Schema;
 
 namespace Pieces_namespace
 {
@@ -27,6 +28,8 @@ namespace Pieces_namespace
         public abstract int Color { get; }
 
         public abstract string Type { get; }
+
+        public abstract int Score { get; }
 
         protected bool is_valid_move(int i, int j)
         {
@@ -63,6 +66,8 @@ namespace Pieces_namespace
         private string address;
         public bool FirstMove = true;
         private string type = "Pawn";
+
+        private int score = 1;
 
         public Pawn(int color, (int, int) position)
         {
@@ -147,6 +152,8 @@ namespace Pieces_namespace
         public override (int, int) Pos { get => position; set => position = value; }
         public override int Color => color;
         public override string Type => type;
+
+        public override int Score => score;
     }
 
     class Knight : Piece
@@ -155,6 +162,8 @@ namespace Pieces_namespace
         private (int, int) position;
         private string address;
         private string type = "Knight";
+
+        private int score = 3;
 
         public Knight(int color, (int, int) position)
         {
@@ -197,6 +206,8 @@ namespace Pieces_namespace
         public override (int, int) Pos { get => position; set => position = value; }
         public override int Color => color;
         public override string Type => type;
+
+        public override int Score => score;
     }
 
     class Bishop : Piece
@@ -205,6 +216,7 @@ namespace Pieces_namespace
         private (int, int) position;
         private string address;
         private string type = "Bishop";
+        private int score = 3;
 
         public Bishop(int color, (int, int) position)
         {
@@ -252,6 +264,7 @@ namespace Pieces_namespace
         public override (int, int) Pos { get => position; set => position = value; }
         public override int Color => color;
         public override string Type => type;
+        public override int Score => score;
     }
 
     class Rook : Piece
@@ -261,7 +274,7 @@ namespace Pieces_namespace
         private string address;
         private string type = "Rook";
         public bool hasMoved = false;
-
+        private int score = 5;
         public Rook(int color, (int, int) position)
         {
             this.color = color;
@@ -309,6 +322,7 @@ namespace Pieces_namespace
         public override (int, int) Pos { get => position; set => position = value; }
         public override int Color => color;
         public override string Type => type;
+        public override int Score => score;
     }
 
     class Queen : Piece
@@ -317,6 +331,7 @@ namespace Pieces_namespace
         private (int, int) position;
         private string address;
         private string type = "Queen";
+        public int score = 9;
 
         public Queen(int color, (int, int) position)
         {
@@ -364,6 +379,7 @@ namespace Pieces_namespace
         public override (int, int) Pos { get => position; set => position = value; }
         public override int Color => color;
         public override string Type => type;
+        public override int Score => score;
     }
 
     class King : Piece
@@ -373,6 +389,7 @@ namespace Pieces_namespace
     private string address;
     private string type = "King";
     public bool hasMoved = false;
+    private int score = 0;
 
     public King(int color, (int, int)position)
     {
@@ -463,5 +480,6 @@ namespace Pieces_namespace
     public override (int, int) Pos { get => position; set => position = value; }
     public override int Color => color;
     public override string Type => type;
+    public override int Score => score;
 }
 }
