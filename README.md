@@ -35,8 +35,8 @@ A fully-featured chess game implemented in C# with GTK# for the graphical interf
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/chess-game.git
-cd chess-game
+git clone https://github.com/Keyboris/Chess.git
+cd chess
 ```
 
 2. Install GTK# dependencies (if not already installed):
@@ -122,3 +122,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Piece images from standard chess sets
 - Chess programming concepts from the Chess Programming Wiki
 - GTK# for the cross-platform GUI framework
+
