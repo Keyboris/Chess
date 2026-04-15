@@ -1,466 +1,270 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Net.Quic;
-using Controller_namespace;
-using Pieces_namespace;
+using System.Linq;
+using System.Numerics;
+using Chess;
 
 namespace Agent_namespace
 {
     public class Agent
     {
-        private Controller ctr;
-        public void setController(Controller ctr) { this.ctr = ctr; }
+        private const int MaxDepth = 4;
 
-        private const int MaxDepth = 4; // Depth can be increased due to performance improvements
-        private static int maxPhase = 78;
-        private static int currentPhase = 78;
-        public Move GetBestMove(Board board, int player)
+        public Move GetBestMove(Board board)
         {
-            Console.WriteLine($"DEBUG: GetBestMove - AI searching for best move for Player {player} at depth {MaxDepth}.");
+            int side = board.SideToMove;
+            var moves = MoveGen.GenerateLegalMoves(board);
+            if (moves.Count == 0) return default;
 
-            int bestScore = player == -1 ? int.MaxValue : int.MinValue;
-            Move bestMove = null;
+            Move best = moves[0];
+            int bestScore = side == 0 ? int.MinValue : int.MaxValue;
 
-            // Use the new legal move generator
-            List<Move> legalMoves = board.GenerateLegalMoves(player);
-
-            if (legalMoves.Count == 0) return null; // No legal moves
-
-            bestMove = legalMoves[0]; // Default to first move in case all moves have same score
-
-            foreach (var move in legalMoves)
+            foreach (var move in moves)
             {
-                board.MakeMove(move);
-                int score = Minimax(board, -player, 1, int.MinValue, int.MaxValue);
-                board.UnmakeMove(move);
+                var undo = MoveGen.MakeMove(board, move);
+                int score = Minimax(board, 1, int.MinValue, int.MaxValue);
+                MoveGen.UnmakeMove(board, undo);
 
-                if (player == -1) // Minimizing player (black)
-                {
-                    if (score < bestScore)
-                    {
-                        bestScore = score;
-                        bestMove = move;
-                    }
-                }
-                else // Maximizing player (white)
-                {
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        bestMove = move;
-                    }
-                }
+                if (side == 0 && score > bestScore) { bestScore = score; best = move; }
+                if (side == 1 && score < bestScore) { bestScore = score; best = move; }
             }
-
-            Console.WriteLine($"DEBUG: GetBestMove - AI found best move with score {bestScore}.");
-            return bestMove;
+            return best;
         }
 
-        private int Minimax(Board board, int player, int depth, int alpha, int beta)
+        private int Minimax(Board board, int depth, int alpha, int beta)
         {
             if (depth >= MaxDepth)
+                return QSearch(board, alpha, beta);
+
+            var moves = MoveGen.GenerateLegalMoves(board);
+            if (moves.Count == 0)
             {
-                return qSearch(board, player, alpha, beta);
+                if (MoveGen.IsInCheck(board, board.SideToMove))
+                    return board.SideToMove == 0 ? int.MinValue + depth : int.MaxValue - depth;
+                return 0; // stalemate
             }
 
-            List<Move> legalMoves = board.GenerateLegalMoves(player);
+            var sorted = moves.OrderByDescending(m => MovePriority(m, board)).ToList();
 
-            // Handle checkmate or stalemate terminal nodes
-            if (legalMoves.Count == 0)
+            if (board.SideToMove == 0) // White maximises
             {
-                var kingPos = board.FindKing(player);
-                if (board.IsSquareAttacked(kingPos, -player))
+                int max = int.MinValue;
+                foreach (var m in sorted)
                 {
-                    // This player is in checkmate. Return a very bad score for them.
-                    return player == 1 ? int.MinValue + depth : int.MaxValue - depth;
+                    var u = MoveGen.MakeMove(board, m);
+                    max = Math.Max(max, Minimax(board, depth + 1, alpha, beta));
+                    MoveGen.UnmakeMove(board, u);
+                    alpha = Math.Max(alpha, max);
+                    if (beta <= alpha) break;
                 }
-                // Stalemate
-                return 0;
+                return max;
             }
-
-            var sortedMoves = legalMoves
-            .OrderByDescending(move => GetMovePriorityScore(move, board))
-            .ToList();
-
-            if (player == 1) // White, maximizing player
+            else // Black minimises
             {
-                int maxEval = int.MinValue;
-                foreach (var move in sortedMoves)
+                int min = int.MaxValue;
+                foreach (var m in sorted)
                 {
-                    board.MakeMove(move);
-                    int score = Minimax(board, -player, depth + 1, alpha, beta);
-                    board.UnmakeMove(move);
-
-                    maxEval = Math.Max(maxEval, score);
-                    alpha = Math.Max(alpha, maxEval);
-                    if (beta <= alpha)
-                    {
-                        break; // Beta cutoff
-                    }
+                    var u = MoveGen.MakeMove(board, m);
+                    min = Math.Min(min, Minimax(board, depth + 1, alpha, beta));
+                    MoveGen.UnmakeMove(board, u);
+                    beta = Math.Min(beta, min);
+                    if (beta <= alpha) break;
                 }
-                return maxEval;
-            }
-            else // Black, minimizing player
-            {
-                int minEval = int.MaxValue;
-                foreach (var move in sortedMoves)
-                {
-                    board.MakeMove(move);
-                    int score = Minimax(board, -player, depth + 1, alpha, beta);
-                    board.UnmakeMove(move);
-
-                    minEval = Math.Min(minEval, score);
-                    beta = Math.Min(beta, minEval);
-                    if (beta <= alpha)
-                    {
-                        break; // Alpha cutoff
-                    }
-                }
-                return minEval;
+                return min;
             }
         }
 
-
-        private int qSearch(Board board, int player, int alpha, int beta)
+        private int QSearch(Board board, int alpha, int beta)
         {
-            int standPat = Evaluate(board);
+            int stand = Evaluate(board);
+            int side   = board.SideToMove;
 
-            if (player == 1) // White, maximising player
+            if (side == 0)
             {
-                if (standPat >= beta)
-                {
-                    return beta; // Fail-soft beta cutoff
-                }
-                if (standPat > alpha)
-                {
-                    alpha = standPat;
-                }
-            }
-            else // Black, minimizing player
-            {
-                if (standPat <= alpha)
-                {
-                    return alpha; // Fail-soft alpha cutoff
-                }
-                if (standPat < beta)
-                {
-                    beta = standPat;
-                }
-            }
-            
-            var legalMoves = board.GenerateLegalMoves(player); 
-
-            var captureMoves = legalMoves.Where(move => board[move.to_x, move.to_y] is not null);
-            
-            //var checkMoves = legalMoves.Where(move => move.IsChecking);
-
-            HashSet<Move> tacticalMoves = new HashSet<Move>(captureMoves);
-            //tacticalMoves.UnionWith(checkMoves);
-
-            var promotionMoves = legalMoves.Where(move => move.isPromotion);
-            tacticalMoves.UnionWith(promotionMoves);
-
-            if (tacticalMoves.Count == 0)
-            {
-                return standPat;
-            }
-
-            var sortedTacticalMoves = tacticalMoves
-                .OrderByDescending(move => GetMovePriorityScore(move, board))
-                .ToList();
-
-            if (player == 1) // White, maximizing player
-            {
-                foreach (Move move in sortedTacticalMoves)
-                {
-                    board.MakeMove(move);
-                    int score = qSearch(board, -player, alpha, beta); // Recurse
-                    board.UnmakeMove(move);
-
-                    if (score >= beta)
-                    {
-                        return beta; // Beta cutoff
-                    }
-                    if (score > alpha)
-                    {
-                        alpha = score;
-                    }
-                }
-                return alpha; // Return the best score found
-            }
-            else // Black, minimizing player
-            {
-                foreach (Move move in sortedTacticalMoves)
-                {
-                    board.MakeMove(move);
-                    int score = qSearch(board, -player, alpha, beta); // Recurse
-                    board.UnmakeMove(move);
-
-                    if (score <= alpha)
-                    {
-                        return alpha; // Alpha cutoff
-                    }
-                    if (score < beta)
-                    {
-                        beta = score;
-                    }
-                }
-                return beta; // Return the best score found
-            }
-        }
-        
-
-        private int GetMovePriorityScore(Move move, Board board)
-        {
-            int score = 0;
-
-            if (board[move.to_x, move.to_y] is Piece victim)
-            {
-                int victimValue = victim.Score; 
-                int aggressorValue = board[move.from_x, move.from_y].Score;
-                
-                score += 1000000 + (victimValue * 1000 - aggressorValue);
-            }
-            
-            if (move.IsChecking)
-            {
-                score += 500000;
-            }
-            
-            if (move.isPromotion)
-            {
-                score += 200000;
-            }
-            
-            return score;
-        }
-        #region Evaluation Tables 
-        public static int[,] BlackPawnTable = new int[8, 8]
-        {
-            { 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 1, 1, -1, -1, 1, 1, 1 },
-            { 5, 5, 5, 7, 7, 5, 5, 5 },
-            { 6, 6, 8, 10, 10, 8, 6, 6 },
-            { 8, 8, 10, 20, 20, 10, 8, 8 },
-            { 14, 15, 20, 30, 30, 20, 15, 14 },
-            { 50, 50, 50, 50, 50, 50, 50, 50 },
-            { 90, 90, 90, 90, 90, 90, 90, 90 }
-        };
-
-        public static int[,] WhitePawnTable = new int[8, 8]
-        {
-            { 90, 90, 90, 90, 90, 90, 90, 90 },
-            { 50, 50, 50, 50, 50, 50, 50, 50 },
-            { 14, 15, 20, 30, 30, 20, 14, 15 },
-            { 8, 8, 10, 20, 20, 10, 8, 8 },
-            { 6, 6, 8, 10, 10, 8, 6, 6 },
-            { 5, 5, 5, 7, 7, 5, 5, 5 },
-            { 1, 1, 1, -1, -1, 1, 1, 1 },
-            { 0, 0, 0, 0, 0, 0, 0, 0 }
-        };
-
-        public static int[,] WhiteKnightTable = new int[8, 8]
-        {
-            { -50, -40, -30, -30, -30, -30, -40, -50 },
-            { -40, -20, 0, 0, 0, 0, -20, -40 },
-            { -30, 0, 10, 15, 15, 10, 0, -30 },
-            { -30, 5, 15, 20, 20, 15, 5, -30 },
-            { -30, 0, 15, 20, 20, 15, 0, -30 },
-            { -30, 5, 10, 15, 15, 10, 5, -30 },
-            { -40, -20, 0, 5, 5, 0, -20, -40 },
-            { -50, -40, -30, -30, -30, -30, -40, -50 }
-        };
-
-        public static int[,] BlackKnightTable = new int[8, 8]
-        {
-            { -50, -40, -30, -30, -30, -30, -40, -50 },
-            { -40, -20, 0, 5, 5, 0, -20, -40 },
-            { -30, 5, 10, 15, 15, 10, 5, -30 },
-            { -30, 0, 15, 20, 20, 15, 0, -30 },
-            { -30, 5, 15, 20, 20, 15, 5, -30 },
-            { -30, 0, 10, 15, 15, 10, 0, -30 },
-            { -40, -20, 0, 0, 0, 0, -20, -40 },
-            { -50, -40, -30, -30, -30, -30, -40, -50 }
-        };
-
-        public static int[,] WhiteBishopTable = new int[8, 8]
-        {
-            { -20, -10, -10, -10, -10, -10, -10, -20 },
-            { -10, 5, 0, 0, 0, 0, 5, -10 },
-            { -10, 10, 10, 10, 10, 10, 10, -10 },
-            { -10, 0, 10, 10, 10, 10, 0, -10 },
-            { -10, 5, 5, 10, 10, 5, 5, -10 },
-            { -10, 0, 5, 10, 10, 5, 0, -10 },
-            { -10, 0, 0, 0, 0, 0, 0, -10 },
-            { -20, -10, -10, -10, -10, -10, -10, -20 }
-        };
-
-        public static int[,] BlackBishopTable = new int[8, 8]
-        {
-            { -20, -10, -10, -10, -10, -10, -10, -20 },
-            { -10, 0, 0, 0, 0, 0, 0, -10 },
-            { -10, 0, 5, 10, 10, 5, 0, -10 },
-            { -10, 5, 5, 10, 10, 5, 5, -10 },
-            { -10, 0, 10, 10, 10, 10, 0, -10 },
-            { -10, 10, 10, 10, 10, 10, 10, -10 },
-            { -10, 5, 0, 0, 0, 0, 5, -10 },
-            { -20, -10, -10, -10, -10, -10, -10, -20 }
-        };
-
-        public static int[,] BlackRookTable = new int[8, 8]
-        {
-            { 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 5, 10, 10, 10, 10, 10, 10, 5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { 0, 0, 0, 5, 5, 0, 0, 0 }
-        };
-
-        public static int[,] WhiteRookTable = new int[8, 8]
-        {
-            { 0, 0, 0, 5, 5, 0, 0, 0 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { -5, 0, 0, 0, 0, 0, 0, -5 },
-            { 5, 10, 10, 10, 10, 10, 10, 5 },
-            { 0, 0, 0, 0, 0, 0, 0, 0 }
-        };
-
-        public static int[,] WhiteQueenTable = new int[8, 8]
-        {
-            { -20, -10, -10, -5, -5, -10, -10, -20 },
-            { -10, 0, 0, 0, 0, 0, 0, -10 },
-            { -10, 0, 5, 5, 5, 5, 0, -10 },
-            { -5, 0, 5, 5, 5, 5, 0, -5 },
-            { 0, 0, 5, 5, 5, 5, 0, -5 },
-            { -10, 5, 5, 5, 5, 5, 0, -10 },
-            { -10, 0, 5, 0, 0, 0, 0, -10 },
-            { -20, -10, -10, -5, -5, -10, -10, -20 }
-        };
-
-        public static int[,] BlackQueenTable = new int[8, 8]
-        {
-            { -20, -10, -10, -5, -5, -10, -10, -20 },
-            { -10, 0, 0, 0, 0, 0, 0, -10 },
-            { -10, 0, 5, 5, 5, 5, 0, -10 },
-            { 0, 0, 5, 5, 5, 5, 0, -5 },
-            { -5, 0, 5, 5, 5, 5, 0, -5 },
-            { -10, 0, 5, 5, 5, 5, 0, -10 },
-            { -10, 0, 0, 0, 0, 0, 0, -10 },
-            { -20, -10, -10, -5, -5, -10, -10, -20 }
-        };
-
-        public static int[,] WhiteKingMidgame = new int[8, 8]
-        {
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -20, -30, -30, -40, -40, -30, -30, -20 },
-            { -10, -20, -20, -20, -20, -20, -20, -10 },
-            {  20,  20,   0,   0,   0,   0,  20,  20 },
-            {  20,  30,  10,   0,   0,  10,  30,  20 }
-        };
-
-        public static int[,] BlackKingMidgame = new int[8, 8]
-        {
-            {  20,  30,  10,   0,   0,  10,  30,  20 },
-            {  20,  20,   0,   0,   0,   0,  20,  20 },
-            { -10, -20, -20, -20, -20, -20, -20, -10 },
-            { -20, -30, -30, -40, -40, -30, -30, -20 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 },
-            { -30, -40, -40, -50, -50, -40, -40, -30 }
-        };
-
-        public static int[,] WhiteKingEndgame = new int[8, 8]
-        {
-            { -50, -30, -30, -30, -30, -30, -30, -50 },
-            { -30, -15, -10, -10, -10, -10, -15, -30 },
-            { -30, -10,  20,  30,  30,  20, -10, -30 },
-            { -30, -10,  30,  40,  40,  30, -10, -30 },
-            { -30, -10,  30,  40,  40,  30, -10, -30 },
-            { -30, -10,  20,  30,  30,  20, -10, -30 },
-            { -30, -20, -10,   0,   0, -10, -20, -30 },
-            { -50, -40, -30, -20, -20, -30, -40, -50 }
-        };
-
-        public static int[,] BlackKingEndgame = new int[8, 8]
-        {
-            { -50, -40, -30, -20, -20, -30, -40, -50 },
-            { -30, -20, -10,   0,   0, -10, -20, -30 },
-            { -30, -10,  20,  30,  30,  20, -10, -30 },
-            { -30, -10,  30,  40,  40,  30, -10, -30 },
-            { -30, -10,  30,  40,  40,  30, -10, -30 },
-            { -30, -10,  20,  30,  30,  20, -10, -30 },
-            { -30, -15, -10, -10, -10, -10, -15, -30 },
-            { -50, -30, -30, -30, -30, -30, -30, -50 }
-        };
-
-        #endregion
-
-        private static int PositionValue(Piece p, Board board)
-        {
-            currentPhase = int.Min(maxPhase, board.getBlackScore + board.getWhiteScore);
-            double phaseRatio = (double)currentPhase / maxPhase; 
-
-            if (p.Color == 1)
-            {
-                return p.Type switch
-                {
-                    "Pawn" => WhitePawnTable[p.Pos.Item2, p.Pos.Item1],
-                    "Knight" => WhiteKnightTable[p.Pos.Item2, p.Pos.Item1],
-                    "Bishop" => WhiteBishopTable[p.Pos.Item2, p.Pos.Item1],
-                    "Rook" => WhiteRookTable[p.Pos.Item2, p.Pos.Item1],
-                    "Queen" => WhiteQueenTable[p.Pos.Item2, p.Pos.Item1],
-                    "King" => (int)(phaseRatio * WhiteKingMidgame[p.Pos.Item2, p.Pos.Item1] + (1 - phaseRatio) * WhiteKingEndgame[p.Pos.Item2, p.Pos.Item1]),
-                    _ => 0
-                };
+                if (stand >= beta) return beta;
+                alpha = Math.Max(alpha, stand);
             }
             else
             {
-                return p.Type switch
+                if (stand <= alpha) return alpha;
+                beta = Math.Min(beta, stand);
+            }
+
+            var moves = MoveGen.GenerateLegalMoves(board)
+                               .Where(m => m.IsCapture || m.IsPromotion)
+                               .OrderByDescending(m => MovePriority(m, board))
+                               .ToList();
+
+            if (side == 0)
+            {
+                foreach (var m in moves)
                 {
-                    "Pawn" => BlackPawnTable[p.Pos.Item2, p.Pos.Item1],
-                    "Knight" => BlackKnightTable[p.Pos.Item2, p.Pos.Item1],
-                    "Bishop" => BlackBishopTable[p.Pos.Item2, p.Pos.Item1],
-                    "Rook" => BlackRookTable[p.Pos.Item2, p.Pos.Item1],
-                    "Queen" => BlackQueenTable[p.Pos.Item2, p.Pos.Item1],
-                    "King" => (int)(phaseRatio * BlackKingMidgame[p.Pos.Item2, p.Pos.Item1] + (1 - phaseRatio) * BlackKingEndgame[p.Pos.Item2, p.Pos.Item1]),
-                    _ => 0
-                };
+                    var u = MoveGen.MakeMove(board, m);
+                    int score = QSearch(board, alpha, beta);
+                    MoveGen.UnmakeMove(board, u);
+                    if (score >= beta) return beta;
+                    alpha = Math.Max(alpha, score);
+                }
+                return alpha;
+            }
+            else
+            {
+                foreach (var m in moves)
+                {
+                    var u = MoveGen.MakeMove(board, m);
+                    int score = QSearch(board, alpha, beta);
+                    MoveGen.UnmakeMove(board, u);
+                    if (score <= alpha) return alpha;
+                    beta = Math.Min(beta, score);
+                }
+                return beta;
             }
         }
 
+        private int MovePriority(Move move, Board board)
+        {
+            int score = 0;
+            if (move.IsCapture)
+            {
+                int victim    = board.PieceOn(move.IsEnPassant ? (move.From / 8) * 8 + move.To % 8 : move.To);
+                int aggressor = board.PieceOn(move.From);
+                if (victim != Piece.None)
+                    score += 1_000_000 + PieceValue(Piece.TypeOf(victim)) * 1000 - PieceValue(Piece.TypeOf(aggressor));
+            }
+            if (move.IsPromotion) score += 200_000;
+            return score;
+        }
+
+        // ---- Evaluation ----
         private static int Evaluate(Board board)
         {
-            // Evaluation is always from whites perspective (positive is good for white)
-
             int score = 0;
-            Dictionary<string, int> values = new Dictionary<string, int>()
+            int totalMaterial = 0;
+            for (int i = 0; i < 12; i++)
             {
-                {"Pawn", 100}, {"Knight", 320}, {"Bishop", 330}, {"Rook", 500}, {"Queen", 900}, {"King", 20000}
-            };
+                if (i % 6 != 5) // exclude kings from material count for phase
+                    totalMaterial += BitOperations.PopCount(board.BB[i]) * PieceValue(i % 6);
+            }
+            double phase = Math.Min(1.0, totalMaterial / 7800.0); // 7800 approx full material
 
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < 12; i++)
             {
-                for (int j = 0; j < 8; j++)
+                ulong bb = board.BB[i];
+                int color = i / 6; // 0=white, 1=black
+                int type  = i % 6;
+                int sign  = color == 0 ? 1 : -1;
+                while (bb != 0)
                 {
-                    if (board[j, i] is not null)
-                    {
-                        Piece p = board[j, i];
-                        score += (values[p.Type] + PositionValue(p, board)) * p.Color;
-                    }
+                    int sq = BitOperations.TrailingZeroCount(bb);
+                    score += sign * (PieceValue(type) + PstValue(type, color, sq, phase));
+                    bb &= bb - 1;
                 }
             }
             return score;
         }
+
+        private static int PieceValue(int type) => type switch
+        {
+            0 => 100,  // Pawn
+            1 => 320,  // Knight
+            2 => 330,  // Bishop
+            3 => 500,  // Rook
+            4 => 900,  // Queen
+            5 => 20000,// King
+            _ => 0
+        };
+
+        // Piece-square tables: indexed [rank][file], white's perspective (rank 7 = white back rank)
+        // For black we mirror the rank.
+        private static int PstValue(int type, int color, int sq, double phase)
+        {
+            int rank = sq / 8;
+            int file = sq % 8;
+            // Mirror for white: white's back rank is rank 7, so we flip
+            int r = color == 0 ? 7 - rank : rank;
+            return type switch
+            {
+                0 => PawnPst[r, file],
+                1 => KnightPst[r, file],
+                2 => BishopPst[r, file],
+                3 => RookPst[r, file],
+                4 => QueenPst[r, file],
+                5 => (int)(phase * KingMidPst[r, file] + (1 - phase) * KingEndPst[r, file]),
+                _ => 0
+            };
+        }
+
+        #region PST Tables (rank 0 = own back rank, rank 7 = opponent back rank)
+        static readonly int[,] PawnPst = {
+            { 0,  0,  0,  0,  0,  0,  0,  0},
+            {50, 50, 50, 50, 50, 50, 50, 50},
+            {14, 15, 20, 30, 30, 20, 15, 14},
+            { 8,  8, 10, 20, 20, 10,  8,  8},
+            { 6,  6,  8, 10, 10,  8,  6,  6},
+            { 5,  5,  5,  7,  7,  5,  5,  5},
+            { 1,  1,  1, -1, -1,  1,  1,  1},
+            { 0,  0,  0,  0,  0,  0,  0,  0},
+        };
+        static readonly int[,] KnightPst = {
+            {-50,-40,-30,-30,-30,-30,-40,-50},
+            {-40,-20,  0,  0,  0,  0,-20,-40},
+            {-30,  0, 10, 15, 15, 10,  0,-30},
+            {-30,  5, 15, 20, 20, 15,  5,-30},
+            {-30,  0, 15, 20, 20, 15,  0,-30},
+            {-30,  5, 10, 15, 15, 10,  5,-30},
+            {-40,-20,  0,  5,  5,  0,-20,-40},
+            {-50,-40,-30,-30,-30,-30,-40,-50},
+        };
+        static readonly int[,] BishopPst = {
+            {-20,-10,-10,-10,-10,-10,-10,-20},
+            {-10,  5,  0,  0,  0,  0,  5,-10},
+            {-10, 10, 10, 10, 10, 10, 10,-10},
+            {-10,  0, 10, 10, 10, 10,  0,-10},
+            {-10,  5,  5, 10, 10,  5,  5,-10},
+            {-10,  0,  5, 10, 10,  5,  0,-10},
+            {-10,  0,  0,  0,  0,  0,  0,-10},
+            {-20,-10,-10,-10,-10,-10,-10,-20},
+        };
+        static readonly int[,] RookPst = {
+            { 0,  0,  0,  5,  5,  0,  0,  0},
+            {-5,  0,  0,  0,  0,  0,  0, -5},
+            {-5,  0,  0,  0,  0,  0,  0, -5},
+            {-5,  0,  0,  0,  0,  0,  0, -5},
+            {-5,  0,  0,  0,  0,  0,  0, -5},
+            {-5,  0,  0,  0,  0,  0,  0, -5},
+            { 5, 10, 10, 10, 10, 10, 10,  5},
+            { 0,  0,  0,  0,  0,  0,  0,  0},
+        };
+        static readonly int[,] QueenPst = {
+            {-20,-10,-10, -5, -5,-10,-10,-20},
+            {-10,  0,  0,  0,  0,  0,  0,-10},
+            {-10,  0,  5,  5,  5,  5,  0,-10},
+            { -5,  0,  5,  5,  5,  5,  0, -5},
+            {  0,  0,  5,  5,  5,  5,  0, -5},
+            {-10,  5,  5,  5,  5,  5,  0,-10},
+            {-10,  0,  5,  0,  0,  0,  0,-10},
+            {-20,-10,-10, -5, -5,-10,-10,-20},
+        };
+        static readonly int[,] KingMidPst = {
+            { 20, 30, 10,  0,  0, 10, 30, 20},
+            { 20, 20,  0,  0,  0,  0, 20, 20},
+            {-10,-20,-20,-20,-20,-20,-20,-10},
+            {-20,-30,-30,-40,-40,-30,-30,-20},
+            {-30,-40,-40,-50,-50,-40,-40,-30},
+            {-30,-40,-40,-50,-50,-40,-40,-30},
+            {-30,-40,-40,-50,-50,-40,-40,-30},
+            {-30,-40,-40,-50,-50,-40,-40,-30},
+        };
+        static readonly int[,] KingEndPst = {
+            {-50,-40,-30,-20,-20,-30,-40,-50},
+            {-30,-20,-10,  0,  0,-10,-20,-30},
+            {-30,-10, 20, 30, 30, 20,-10,-30},
+            {-30,-10, 30, 40, 40, 30,-10,-30},
+            {-30,-10, 30, 40, 40, 30,-10,-30},
+            {-30,-10, 20, 30, 30, 20,-10,-30},
+            {-30,-15,-10,  0,  0,-10,-15,-30},
+            {-50,-30,-30,-30,-30,-30,-30,-50},
+        };
+        #endregion
     }
 }
