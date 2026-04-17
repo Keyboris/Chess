@@ -108,7 +108,7 @@ namespace Chess
         public const int Promotion = 8;
     }
 
-    public struct Move
+    public struct Move: IEquatable<Move>
     {
         // from/to are square indices 0-63
         // flags: see MoveFlags
@@ -125,11 +125,33 @@ namespace Chess
             Flags = (byte)flags;
             PromoPiece = (byte)(promoPiece == Piece.None ? 255 : promoPiece);
         }
-
         public bool IsCapture   => (Flags & MoveFlags.Capture)   != 0;
         public bool IsCastle    => (Flags & MoveFlags.Castle)     != 0;
         public bool IsEnPassant => (Flags & MoveFlags.EnPassant)  != 0;
         public bool IsPromotion => (Flags & MoveFlags.Promotion)  != 0;
+        public override bool Equals(object obj)
+        {
+            return obj is Move move && Equals(move);
+        }
+
+        public bool Equals(Move move)
+        {
+            return From == move.From && To == move.To && Flags == move.Flags && PromoPiece == move.PromoPiece;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(From, To, Flags, PromoPiece);
+        }
+
+        public static bool operator ==(Move m1, Move m2)
+        {
+            return m1.From == m2.From && m1.To == m2.To && m1.Flags == m2.Flags && m1.PromoPiece == m2.PromoPiece; 
+        }
+        public static bool operator !=(Move m1, Move m2)
+        {
+            return !(m1.From == m2.From && m1.To == m2.To && m1.Flags == m2.Flags && m1.PromoPiece == m2.PromoPiece);
+        }
     }
 
     // -----------------------------------------------------------------------
