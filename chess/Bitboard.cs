@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Numerics;
+using System.Security.Cryptography;
+using Gtk;
 
 namespace Chess
 {
@@ -28,6 +30,70 @@ namespace Chess
         public static int TypeOf(int p)  => p % 6;
         public static int ColorOf(int p) => p / 6; // 0=white, 1=black
         public static int Make(int color, int type) => color * 6 + type;
+    }
+
+    // -----------------------------------------------------------------------
+    // Zobrist hashing
+    // -----------------------------------------------------------------------
+
+    public class ZobristPRNG
+    {
+        private ulong _state = 1070322;
+
+        public ZobristPRNG(ulong seed = 1070322)
+        {
+            _state = seed;
+        }
+
+        // Pseudo random number generator for Zorbist hashing specifically
+        public ulong NextUInt64()
+        {
+            _state += 0x9E3779B97F4A7C15UL;
+            ulong z = _state;
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+            return z ^ (z >> 31);
+        }
+    }
+
+
+    public static class ZobristNumbers
+    {
+        private static readonly ZobristPRNG ZobristPRNG = new ZobristPRNG();
+        
+        // Zobrist numbers per piece per square
+        public static readonly ulong[,] SquareNumbers = new ulong[12,64];
+
+        // All combinations of castling rights, use bitmask as an index
+        public static readonly ulong[] CastlingRights = new ulong[16];
+
+        // Files from A-H
+        public static readonly ulong[] EnPassantRights = new ulong[8];
+        public static readonly ulong BlacksTurn;
+
+        static ZobristNumbers()
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                for (int j = 0; j < 64; j++)
+                {
+                    SquareNumbers[i,j] = ZobristPRNG.NextUInt64();
+                }
+            }
+
+            for (int i = 0; i < 16; i++)
+            {
+                CastlingRights[i] = ZobristPRNG.NextUInt64();
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                EnPassantRights[i] = ZobristPRNG.NextUInt64();
+            }
+
+            BlacksTurn = ZobristPRNG.NextUInt64();
+        }
+        
     }
 
     // -----------------------------------------------------------------------
@@ -88,6 +154,9 @@ namespace Chess
         //   file 0 = column 0 = a-file (left)
         public ulong[] BB = new ulong[12];
 
+        // Position hash for Zorbist hashing 
+        public ulong ZobristHash = 0;
+
         // Castling rights: bit0=WK, bit1=WQ, bit2=BK, bit3=BQ
         public int CastlingRights = 0b1111;
 
@@ -133,6 +202,31 @@ namespace Chess
             return b;
         }
 
+        public ulong CalculateHash()
+        {
+            ulong hash = 0;
+            for (int i = 0; i < 12; i++)
+            {
+                ulong currentBB = BB[i];
+                while (currentBB != 0)
+                {
+                    hash ^= ZobristNumbers.SquareNumbers[i,BitOperations.TrailingZeroCount(currentBB)];
+                    currentBB &= currentBB - 1;
+                }
+            }
+            if (SideToMove == 1)
+            {
+                hash ^= ZobristNumbers.BlacksTurn;
+            }
+            hash ^= ZobristNumbers.CastlingRights[CastlingRights];
+            if (EnPassantFile != -1)
+            {
+                hash ^= ZobristNumbers.EnPassantRights[EnPassantFile];    
+            }
+            
+            return hash;
+        }
+
         // Standard starting position
         public void Reset()
         {
@@ -156,6 +250,7 @@ namespace Chess
             CastlingRights = 0b1111;
             EnPassantFile  = -1;
             SideToMove     = 0;
+            ZobristHash = CalculateHash();
         }
     }
 
@@ -526,10 +621,13 @@ namespace Chess
             int to     = move.To;
             int moving = board.PieceOn(from);
 
+            // Get rid of previous en passant file before resetting current
+            if (undo.EnPassantFile != -1) board.ZobristHash ^= ZobristNumbers.EnPassantRights[undo.EnPassantFile];
             board.EnPassantFile = -1;
 
             // Remove moving piece from source
             board.BB[moving] &= ~Board.Sq(from);
+            board.ZobristHash ^= ZobristNumbers.SquareNumbers[moving, from];
 
             // Handle captures
             if (move.IsEnPassant)
@@ -539,37 +637,70 @@ namespace Chess
                 int capPiece = board.PieceOn(capSq);
                 undo.CapturedPiece = capPiece;
                 board.BB[capPiece] &= ~Board.Sq(capSq);
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[capPiece, capSq];
             }
             else if (move.IsCapture)
             {
                 int capPiece = board.PieceOn(to);
                 undo.CapturedPiece = capPiece;
                 if (capPiece != Piece.None)
-                    board.BB[capPiece] &= ~Board.Sq(to);
+                    {board.BB[capPiece] &= ~Board.Sq(to); board.ZobristHash ^= ZobristNumbers.SquareNumbers[capPiece, to];}
+                
             }
 
             // Place piece on destination (or promoted piece)
             if (move.IsPromotion)
+            {
                 board.BB[move.PromoPiece] |= Board.Sq(to);
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[move.PromoPiece, to];
+            }
             else
+            {
                 board.BB[moving] |= Board.Sq(to);
-
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[moving, to];
+            }
+               
             // Castling: move the rook
             if (move.IsCastle)
             {
                 if (side == 0)
                 {
-                    if (to == 62) { board.BB[Piece.WhiteRook] &= ~Board.Sq(63); board.BB[Piece.WhiteRook] |= Board.Sq(61); }
-                    else          { board.BB[Piece.WhiteRook] &= ~Board.Sq(56); board.BB[Piece.WhiteRook] |= Board.Sq(59); }
+                    if (to == 62) 
+                    {
+                        board.BB[Piece.WhiteRook] &= ~Board.Sq(63); 
+                        board.BB[Piece.WhiteRook] |= Board.Sq(61);
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 63];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 61];
+                    }
+                    else 
+                    {
+                        board.BB[Piece.WhiteRook] &= ~Board.Sq(56);
+                        board.BB[Piece.WhiteRook] |= Board.Sq(59); 
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 56];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 59];
+                    }
                 }
                 else
                 {
-                    if (to == 6)  { board.BB[Piece.BlackRook] &= ~Board.Sq(7);  board.BB[Piece.BlackRook] |= Board.Sq(5);  }
-                    else          { board.BB[Piece.BlackRook] &= ~Board.Sq(0);  board.BB[Piece.BlackRook] |= Board.Sq(3);  }
+                    if (to == 6)  
+                    {
+                        board.BB[Piece.BlackRook] &= ~Board.Sq(7);  
+                        board.BB[Piece.BlackRook] |= Board.Sq(5);
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 7];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 5];
+                    }
+                    else          
+                    { 
+                        board.BB[Piece.BlackRook] &= ~Board.Sq(0);  
+                        board.BB[Piece.BlackRook] |= Board.Sq(3);  
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 0];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 3];
+                    }
                 }
             }
 
             // Update castling rights
+            board.ZobristHash ^= ZobristNumbers.CastlingRights[board.CastlingRights];
             if (moving == Piece.WhiteKing) board.CastlingRights &= ~0b0011;
             if (moving == Piece.BlackKing) board.CastlingRights &= ~0b1100;
             if (moving == Piece.WhiteRook)
@@ -593,22 +724,37 @@ namespace Chess
                 if (to == 7)  board.CastlingRights &= ~0b0100;
                 if (to == 0)  board.CastlingRights &= ~0b1000;
             }
+            board.ZobristHash ^= ZobristNumbers.CastlingRights[board.CastlingRights];
 
             // Set en passant file for double pawn push
             if (moving == Piece.WhitePawn && from - to == 16)
+            {
                 board.EnPassantFile = from % 8;
+                board.ZobristHash ^= ZobristNumbers.EnPassantRights[board.EnPassantFile];
+            }
             if (moving == Piece.BlackPawn && to - from == 16)
+            {
                 board.EnPassantFile = from % 8;
-
+                board.ZobristHash ^= ZobristNumbers.EnPassantRights[board.EnPassantFile];
+            }
+            
+            board.ZobristHash ^= ZobristNumbers.BlacksTurn;
             board.SideToMove ^= 1;
             return undo;
         }
 
         public static void UnmakeMove(Board board, UndoInfo undo)
         {
-            board.SideToMove   ^= 1;
+            board.ZobristHash ^= ZobristNumbers.CastlingRights[board.CastlingRights];
+            if (board.EnPassantFile != -1)
+                board.ZobristHash ^= ZobristNumbers.EnPassantRights[board.EnPassantFile];
+            board.SideToMove ^= 1;
             board.CastlingRights = undo.CastlingRights;
             board.EnPassantFile  = undo.EnPassantFile;
+            board.ZobristHash ^= ZobristNumbers.CastlingRights[undo.CastlingRights];
+            if (undo.EnPassantFile != -1)
+                board.ZobristHash ^= ZobristNumbers.EnPassantRights[undo.EnPassantFile];
+            board.ZobristHash ^= ZobristNumbers.BlacksTurn;
 
             int side = board.SideToMove;
             var move = undo.Move;
@@ -620,23 +766,29 @@ namespace Chess
 
             // Remove from destination
             if (onTo != Piece.None)
+            {
                 board.BB[onTo] &= ~Board.Sq(to);
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[onTo, to];
+            }
 
             // Restore moving piece to source
             int moving = move.IsPromotion
                 ? Piece.Make(side, Piece.TypeOf(Piece.WhitePawn)) // restore pawn
                 : onTo;
             board.BB[moving] |= Board.Sq(from);
+            board.ZobristHash ^= ZobristNumbers.SquareNumbers[moving, from];
 
             // Restore captured piece
             if (move.IsEnPassant)
             {
                 int capSq = (from / 8) * 8 + to % 8;
                 board.BB[undo.CapturedPiece] |= Board.Sq(capSq);
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[undo.CapturedPiece, capSq];
             }
             else if (undo.CapturedPiece != Piece.None)
             {
                 board.BB[undo.CapturedPiece] |= Board.Sq(to);
+                board.ZobristHash ^= ZobristNumbers.SquareNumbers[undo.CapturedPiece, to];
             }
 
             // Undo castling rook move
@@ -644,13 +796,37 @@ namespace Chess
             {
                 if (side == 0)
                 {
-                    if (to == 62) { board.BB[Piece.WhiteRook] &= ~Board.Sq(61); board.BB[Piece.WhiteRook] |= Board.Sq(63); }
-                    else          { board.BB[Piece.WhiteRook] &= ~Board.Sq(59); board.BB[Piece.WhiteRook] |= Board.Sq(56); }
+                    if (to == 62) 
+                    { 
+                        board.BB[Piece.WhiteRook] &= ~Board.Sq(61); 
+                        board.BB[Piece.WhiteRook] |= Board.Sq(63); 
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 61];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 63];
+                    }
+                    else          
+                    { 
+                        board.BB[Piece.WhiteRook] &= ~Board.Sq(59); 
+                        board.BB[Piece.WhiteRook] |= Board.Sq(56); 
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 59];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.WhiteRook, 56];
+                    }
                 }
                 else
                 {
-                    if (to == 6)  { board.BB[Piece.BlackRook] &= ~Board.Sq(5);  board.BB[Piece.BlackRook] |= Board.Sq(7);  }
-                    else          { board.BB[Piece.BlackRook] &= ~Board.Sq(3);  board.BB[Piece.BlackRook] |= Board.Sq(0);  }
+                    if (to == 6)  
+                    { 
+                        board.BB[Piece.BlackRook] &= ~Board.Sq(5);  
+                        board.BB[Piece.BlackRook] |= Board.Sq(7);  
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 5];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 7];
+                    }
+                    else          
+                    { 
+                        board.BB[Piece.BlackRook] &= ~Board.Sq(3);  
+                        board.BB[Piece.BlackRook] |= Board.Sq(0);  
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 3];
+                        board.ZobristHash ^= ZobristNumbers.SquareNumbers[Piece.BlackRook, 0];
+                    }
                 }
             }
         }

@@ -6,9 +6,32 @@ using Chess;
 
 namespace Agent_namespace
 {
+
+    public class TTEntry
+    {
+        public ulong PositionHash;
+        
+        // 0b10 for Alpha, 0b01 for Beta, 0b00 for no cutoff 
+        public int PruningMask;
+        public int Score;
+        public Move BestMove;
+
+        public TTEntry(ulong positionHash, int pruningMask, int score, Move bestMove)
+        {
+            PositionHash = positionHash;
+            PruningMask = pruningMask;
+            Score = score;
+            BestMove = bestMove;
+        }
+    }
+
+
     public class Agent
     {
         private const int MaxDepth = 4;
+
+        // About 64MB table for storing positions
+        private int[] TTable = new int[2097152];
 
         public Move GetBestMove(Board board)
         {
