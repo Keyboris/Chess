@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Formats.Tar;
 using System.Linq;
 using System.Numerics;
 using Chess;
@@ -7,21 +8,20 @@ using Chess;
 namespace Agent_namespace
 {
 
-    public class TTEntry
+    struct TTEntry
     {
         public ulong PositionHash;
-        
-        // 0b10 for Alpha, 0b01 for Beta, 0b00 for no cutoff 
-        public int PruningMask;
         public int Score;
         public Move BestMove;
+        public int Depth;
 
-        public TTEntry(ulong positionHash, int pruningMask, int score, Move bestMove)
+        public Flags Flag;
+
+        public enum Flags : byte
         {
-            PositionHash = positionHash;
-            PruningMask = pruningMask;
-            Score = score;
-            BestMove = bestMove;
+            Alpha,
+            Beta,
+            Exact
         }
     }
 
@@ -31,7 +31,7 @@ namespace Agent_namespace
         private const int MaxDepth = 4;
 
         // About 64MB table for storing positions
-        private int[] TTable = new int[2097152];
+        private TTEntry[] TTable = new TTEntry[2097152];
 
         public Move GetBestMove(Board board)
         {
@@ -56,6 +56,36 @@ namespace Agent_namespace
 
         private int Minimax(Board board, int depth, int alpha, int beta)
         {
+            // Original values needed for correct TTEntry and future cutoffs 
+            int originalAlpha = alpha;
+            int originalBeta = beta;
+            Move? bestNodeMove = null;
+
+            // Transposition Table lookup
+            Move? bestMoveFromTTable = null;
+            ulong currentHash = board.ZobristHash;
+            TTEntry storedEntry = TTable[currentHash & 2097151]; // TTable.Length - 1
+            TTEntry newEntry;
+            if (currentHash == storedEntry.PositionHash)
+            {
+                if (depth <= storedEntry.Depth)
+                {
+                    if (storedEntry.Flag == TTEntry.Flags.Beta && storedEntry.Score >= beta)
+                    {
+                        return storedEntry.Score;
+                    }
+                    else if (storedEntry.Flag == TTEntry.Flags.Alpha && storedEntry.Score <= alpha)
+                    {
+                        return storedEntry.Score;
+                    }
+                    else if (storedEntry.Flag == TTEntry.Flags.Exact)
+                    {
+                        return storedEntry.Score;
+                    }
+                }
+                bestMoveFromTTable = storedEntry.BestMove;
+            }
+
             if (depth >= MaxDepth)
                 return QSearch(board, alpha, beta);
 
@@ -67,32 +97,72 @@ namespace Agent_namespace
                 return 0; // stalemate
             }
 
-            var sorted = moves.OrderByDescending(m => MovePriority(m, board)).ToList();
+            var sorted = moves.OrderByDescending(move => MovePriority(move, board, bestMoveFromTTable)).ToList();
 
             if (board.SideToMove == 0) // White maximises
             {
                 int max = int.MinValue;
-                foreach (var m in sorted)
+                foreach (var move in sorted)
                 {
-                    var u = MoveGen.MakeMove(board, m);
-                    max = Math.Max(max, Minimax(board, depth + 1, alpha, beta));
+                    var u = MoveGen.MakeMove(board, move);
+                    int newScore = Minimax(board, depth + 1, alpha, beta);
+                    if (max <= newScore){max = newScore; bestNodeMove = move;}
                     MoveGen.UnmakeMove(board, u);
                     alpha = Math.Max(alpha, max);
                     if (beta <= alpha) break;
                 }
+                newEntry = new TTEntry{
+                            PositionHash = board.ZobristHash,
+                            Score = max,
+                            BestMove = (Move)bestNodeMove,
+                            Depth = depth,
+                        };
+                if (max >= originalBeta)
+                {
+                    newEntry.Flag = TTEntry.Flags.Beta; // Lower bound
+                }
+                else if (max <= originalAlpha)
+                {
+                    newEntry.Flag = TTEntry.Flags.Alpha; // Upper bound
+                }
+                else
+                {
+                    newEntry.Flag = TTEntry.Flags.Exact; // No cutoff
+                }
+                TTable[newEntry.PositionHash & 2097151] = newEntry;
                 return max;
             }
             else // Black minimises
             {
                 int min = int.MaxValue;
-                foreach (var m in sorted)
+                foreach (var move in sorted)
                 {
-                    var u = MoveGen.MakeMove(board, m);
-                    min = Math.Min(min, Minimax(board, depth + 1, alpha, beta));
+                    var u = MoveGen.MakeMove(board, move);
+                    int newScore = Minimax(board, depth + 1, alpha, beta);
+                    if (min >= newScore) {min = newScore; bestNodeMove = move;}
                     MoveGen.UnmakeMove(board, u);
                     beta = Math.Min(beta, min);
                     if (beta <= alpha) break;
                 }
+                newEntry = new TTEntry{
+                            PositionHash = board.ZobristHash,
+                            Score = min,
+                            BestMove = (Move)bestNodeMove,
+                            Depth = depth,
+                        };
+                if (min <= originalAlpha)
+                {
+                    newEntry.Flag = TTEntry.Flags.Alpha; // Lower bound 
+                }
+                else if (min >= originalBeta)
+                {
+                    newEntry.Flag = TTEntry.Flags.Beta; // Upper bound
+                }
+                else
+                {
+                    newEntry.Flag = TTEntry.Flags.Exact; // Exact, no cutoff
+                }
+                TTable[newEntry.PositionHash & 2097151] = newEntry;
                 return min;
             }
         }
@@ -114,15 +184,15 @@ namespace Agent_namespace
             }
 
             var moves = MoveGen.GenerateLegalMoves(board)
-                               .Where(m => m.IsCapture || m.IsPromotion)
-                               .OrderByDescending(m => MovePriority(m, board))
+                               .Where(move => move.IsCapture || move.IsPromotion)
+                               .OrderByDescending(move => MovePriority(move, board))
                                .ToList();
 
             if (side == 0)
             {
-                foreach (var m in moves)
+                foreach (var move in moves)
                 {
-                    var u = MoveGen.MakeMove(board, m);
+                    var u = MoveGen.MakeMove(board, move);
                     int score = QSearch(board, alpha, beta);
                     MoveGen.UnmakeMove(board, u);
                     if (score >= beta) return beta;
@@ -132,9 +202,9 @@ namespace Agent_namespace
             }
             else
             {
-                foreach (var m in moves)
+                foreach (var move in moves)
                 {
-                    var u = MoveGen.MakeMove(board, m);
+                    var u = MoveGen.MakeMove(board, move);
                     int score = QSearch(board, alpha, beta);
                     MoveGen.UnmakeMove(board, u);
                     if (score <= alpha) return alpha;
@@ -144,8 +214,12 @@ namespace Agent_namespace
             }
         }
 
-        private int MovePriority(Move move, Board board)
+        private int MovePriority(Move move, Board board, Move? bestMove = null)
         {
+            if (move == bestMove &&  bestMove != null)
+            {
+                return int.MaxValue;
+            }
             int score = 0;
             if (move.IsCapture)
             {
